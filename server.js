@@ -2,6 +2,7 @@ const express = require("express");
 const http = require("http");
 const { Server } = require("socket.io");
 const path = require("path");
+const crypto = require("crypto");
 
 const app = express();
 const server = http.createServer(app);
@@ -12,19 +13,109 @@ const PORT = process.env.PORT || 3000;
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
 
+const users = new Map();
 const rooms = new Map();
 
-function generateRoomId() {
-  return Math.random().toString(36).substring(2, 8).toUpperCase();
+function hashPassword(password) {
+  return crypto
+    .createHash("sha256")
+    .update(password)
+    .digest("hex");
 }
+
+/* SIGN UP */
+
+app.post("/api/signup", (req, res) => {
+  const { username, email, password } = req.body;
+
+  if (!username || !email || !password) {
+    return res.json({
+      success: false,
+      message: "Username, email fi password guuti."
+    });
+  }
+
+  if (password.length < 6) {
+    return res.json({
+      success: false,
+      message: "Password yoo xiqqaate qubee 6 qabaachuu qaba."
+    });
+  }
+
+  const emailKey = email.toLowerCase().trim();
+
+  if (users.has(emailKey)) {
+    return res.json({
+      success: false,
+      message: "Email kun duraan account qaba."
+    });
+  }
+
+  users.set(emailKey, {
+    username: username.trim(),
+    email: emailKey,
+    password: hashPassword(password)
+  });
+
+  res.json({
+    success: true,
+    message: "Account uumameera."
+  });
+});
+
+/* LOGIN */
+
+app.post("/api/login", (req, res) => {
+  const { email, password } = req.body;
+
+  const emailKey = String(email || "")
+    .toLowerCase()
+    .trim();
+
+  const user = users.get(emailKey);
+
+  if (!user) {
+    return res.json({
+      success: false,
+      message: "Email ykn password sirrii miti."
+    });
+  }
+
+  if (user.password !== hashPassword(password)) {
+    return res.json({
+      success: false,
+      message: "Email ykn password sirrii miti."
+    });
+  }
+
+  res.json({
+    success: true,
+    user: {
+      username: user.username,
+      email: user.email
+    }
+  });
+});
+
+/* STATUS */
 
 app.get("/api/status", (req, res) => {
   res.json({
     app: "Waliin-JM",
     status: "online",
+    users: users.size,
     rooms: rooms.size
   });
 });
+
+/* ROOMS */
+
+function generateRoomId() {
+  return Math.random()
+    .toString(36)
+    .substring(2, 8)
+    .toUpperCase();
+}
 
 io.on("connection", (socket) => {
 
@@ -37,7 +128,9 @@ io.on("connection", (socket) => {
       users: new Map()
     });
 
-    rooms.get(roomId).users.set(socket.id, {
+    const room = rooms.get(roomId);
+
+    room.users.set(socket.id, {
       username,
       isAdmin: true
     });
@@ -52,6 +145,11 @@ io.on("connection", (socket) => {
       roomId,
       username
     });
+
+    io.to(roomId).emit(
+      "participants",
+      getParticipants(room)
+    );
   });
 
   socket.on("join-room", ({ roomId, username, password = "" }) => {
@@ -59,27 +157,34 @@ io.on("connection", (socket) => {
     const room = rooms.get(roomId);
 
     if (!room) {
-      socket.emit("room-error", "Room kun hin jiru.");
+      socket.emit(
+        "room-error",
+        "Room kun hin jiru."
+      );
       return;
     }
 
-    if (room.password && room.password !== password) {
-      socket.emit("room-error", "Password roomii sirrii miti.");
+    if (
+      room.password &&
+      room.password !== password
+    ) {
+      socket.emit(
+        "room-error",
+        "Password roomii sirrii miti."
+      );
       return;
     }
 
     if (room.users.size >= 10) {
-      socket.emit("room-error", "Room kun namoota 10 guuteera.");
+      socket.emit(
+        "room-error",
+        "Room kun namoota 10 guuteera."
+      );
       return;
     }
 
-    const existingUsers = [...room.users.entries()].map(
-      ([id, user]) => ({
-        socketId: id,
-        username: user.username,
-        isAdmin: user.isAdmin
-      })
-    );
+    const existingUsers =
+      getParticipants(room);
 
     room.users.set(socket.id, {
       username,
@@ -98,10 +203,13 @@ io.on("connection", (socket) => {
       users: existingUsers
     });
 
-    socket.to(roomId).emit("user-joined", {
-      socketId: socket.id,
-      username
-    });
+    socket.to(roomId).emit(
+      "user-joined",
+      {
+        socketId: socket.id,
+        username
+      }
+    );
 
     io.to(roomId).emit(
       "participants",
@@ -113,62 +221,88 @@ io.on("connection", (socket) => {
 
     if (!socket.roomId) return;
 
-    io.to(socket.roomId).emit("chat-message", {
-      username: socket.username,
-      message: data.message,
-      time: new Date().toLocaleTimeString()
-    });
+    io.to(socket.roomId).emit(
+      "chat-message",
+      {
+        username: socket.username,
+        message: data.message,
+        time: new Date()
+          .toLocaleTimeString()
+      }
+    );
   });
 
   socket.on("typing", () => {
 
     if (!socket.roomId) return;
 
-    socket.to(socket.roomId).emit("typing", {
-      username: socket.username
-    });
+    socket.to(socket.roomId).emit(
+      "typing",
+      {
+        username: socket.username
+      }
+    );
   });
 
   socket.on("offer", (data) => {
-    io.to(data.target).emit("offer", {
-      sender: socket.id,
-      offer: data.offer
-    });
+
+    io.to(data.target).emit(
+      "offer",
+      {
+        sender: socket.id,
+        offer: data.offer
+      }
+    );
   });
 
   socket.on("answer", (data) => {
-    io.to(data.target).emit("answer", {
-      sender: socket.id,
-      answer: data.answer
-    });
+
+    io.to(data.target).emit(
+      "answer",
+      {
+        sender: socket.id,
+        answer: data.answer
+      }
+    );
   });
 
   socket.on("ice-candidate", (data) => {
-    io.to(data.target).emit("ice-candidate", {
-      sender: socket.id,
-      candidate: data.candidate
-    });
+
+    io.to(data.target).emit(
+      "ice-candidate",
+      {
+        sender: socket.id,
+        candidate: data.candidate
+      }
+    );
   });
 
   socket.on("mute-user", (targetId) => {
 
-    if (!socket.isAdmin || !socket.roomId) return;
+    if (!socket.isAdmin) return;
 
-    io.to(targetId).emit("force-mute");
+    io.to(targetId).emit(
+      "force-mute"
+    );
   });
 
   socket.on("remove-user", (targetId) => {
 
-    if (!socket.isAdmin || !socket.roomId) return;
+    if (!socket.isAdmin) return;
 
     const room = rooms.get(socket.roomId);
 
     if (!room) return;
 
-    const target = io.sockets.sockets.get(targetId);
+    const target =
+      io.sockets.sockets.get(targetId);
 
     if (target) {
-      target.emit("removed-from-room");
+
+      target.emit(
+        "removed-from-room"
+      );
+
       target.leave(socket.roomId);
       target.roomId = null;
     }
@@ -211,21 +345,27 @@ io.on("connection", (socket) => {
 
 function getParticipants(room) {
 
-  return [...room.users.entries()].map(
-    ([socketId, user]) => ({
-      socketId,
-      username: user.username,
-      isAdmin: user.isAdmin
-    })
-  );
+  return [
+    ...room.users.entries()
+  ].map(([socketId, user]) => ({
+    socketId,
+    username: user.username,
+    isAdmin: user.isAdmin
+  }));
 }
 
 app.get("*", (req, res) => {
   res.sendFile(
-    path.join(__dirname, "public", "index.html")
+    path.join(
+      __dirname,
+      "public",
+      "index.html"
+    )
   );
 });
 
 server.listen(PORT, () => {
-  console.log(`Waliin-JM running on port ${PORT}`);
+  console.log(
+    `Waliin-JM running on port ${PORT}`
+  );
 });
