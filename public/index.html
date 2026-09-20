@@ -1,790 +1,857 @@
 <!DOCTYPE html>
 <html lang="om">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-  <title>Waliin-JM</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
 
-  <script src="/socket.io/socket.io.js"></script>
+<title>Waliin-JM</title>
 
-  <style>
-    * {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-    }
+<script src="/socket.io/socket.io.js"></script>
 
-    body {
-      font-family: Arial, sans-serif;
-      background: #f3f5f7;
-      color: #222;
-    }
+<style>
 
-    .header {
-      background: #176b45;
-      color: white;
-      padding: 16px;
-      text-align: center;
-    }
+*{
+ box-sizing:border-box;
+}
 
-    .header h1 {
-      font-size: 25px;
-    }
+body{
+ margin:0;
+ font-family:Arial,sans-serif;
+ background:#f2f4f7;
+ color:#222;
+}
 
-    .container {
-      width: 95%;
-      max-width: 1000px;
-      margin: 20px auto;
-    }
+body.dark{
+ background:#121212;
+ color:#eee;
+}
 
-    .card {
-      background: white;
-      border-radius: 14px;
-      padding: 20px;
-      margin-bottom: 15px;
-      box-shadow: 0 3px 12px rgba(0,0,0,.08);
-    }
+header{
+ background:#176b45;
+ color:white;
+ padding:16px;
+ display:flex;
+ justify-content:space-between;
+ align-items:center;
+}
 
-    input, button {
-      width: 100%;
-      padding: 13px;
-      margin-top: 10px;
-      border-radius: 8px;
-      font-size: 16px;
-    }
+.container{
+ max-width:900px;
+ margin:auto;
+ padding:15px;
+}
 
-    input {
-      border: 1px solid #ccc;
-    }
+.card{
+ background:white;
+ padding:18px;
+ margin:12px 0;
+ border-radius:15px;
+ box-shadow:0 3px 12px #0001;
+}
 
-    button {
-      border: none;
-      background: #176b45;
-      color: white;
-      cursor: pointer;
-    }
+.dark .card{
+ background:#1e1e1e;
+}
 
-    button:hover {
-      opacity: .9;
-    }
+input,button{
+ width:100%;
+ padding:13px;
+ margin:6px 0;
+ border-radius:9px;
+ font-size:16px;
+}
 
-    .secondary {
-      background: #444;
-    }
+input{
+ border:1px solid #ccc;
+}
 
-    .danger {
-      background: #c62828;
-    }
+button{
+ border:0;
+ background:#176b45;
+ color:white;
+}
 
-    .room {
-      display: none;
-    }
+button.danger{
+ background:#c62828;
+}
 
-    .videos {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-      gap: 12px;
-      margin-top: 15px;
-    }
+button.darkbtn{
+ background:#444;
+}
 
-    video {
-      width: 100%;
-      min-height: 200px;
-      background: #111;
-      border-radius: 12px;
-      object-fit: cover;
-    }
+.hidden{
+ display:none!important;
+}
 
-    .chat {
-      height: 250px;
-      overflow-y: auto;
-      border: 1px solid #ddd;
-      padding: 10px;
-      border-radius: 10px;
-      background: #fafafa;
-    }
+.videos{
+ display:grid;
+ grid-template-columns:repeat(auto-fit,minmax(240px,1fr));
+ gap:10px;
+}
 
-    .message {
-      padding: 8px;
-      margin-bottom: 6px;
-      background: #e7f4ed;
-      border-radius: 8px;
-    }
+video{
+ width:100%;
+ min-height:190px;
+ background:#000;
+ border-radius:12px;
+}
 
-    .controls {
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 8px;
-      margin-top: 12px;
-    }
+.controls{
+ display:grid;
+ grid-template-columns:repeat(2,1fr);
+ gap:7px;
+}
 
-    .status {
-      margin-top: 10px;
-      padding: 10px;
-      border-radius: 8px;
-      background: #eef6f1;
-    }
+.chat{
+ height:230px;
+ overflow:auto;
+ border:1px solid #ccc;
+ padding:10px;
+ border-radius:10px;
+}
 
-    @media(max-width:600px) {
-      .controls {
-        grid-template-columns: 1fr;
-      }
-    }
-  </style>
+.msg{
+ padding:8px;
+ margin:5px 0;
+ background:#e7f4ed;
+ border-radius:8px;
+}
+
+.dark .msg{
+ background:#303030;
+}
+
+.participant{
+ display:flex;
+ justify-content:space-between;
+ padding:9px;
+ border-bottom:1px solid #ddd;
+}
+
+@media(max-width:600px){
+
+ .controls{
+   grid-template-columns:1fr;
+ }
+
+ header h2{
+   font-size:18px;
+ }
+
+}
+
+</style>
+
 </head>
 
 <body>
 
-<div class="header">
-  <h1>Waliin-JM</h1>
-  <p>Chat • Voice • Video • Room</p>
-</div>
+<header>
+
+<h2>🟢 Waliin-JM</h2>
+
+<button
+ class="darkbtn"
+ onclick="toggleDark()"
+ style="width:auto">
+ 🌙
+</button>
+
+</header>
 
 <div class="container">
 
-  <!-- LOGIN -->
-  <div class="card" id="loginBox">
+<!-- LOGIN -->
 
-    <h2>Waliin-JM keessa seeni</h2>
+<div id="login" class="card">
 
-    <input
-      id="username"
-      type="text"
-      placeholder="Maqaa kee galchi"
-    >
+<h2>Waliin-JM</h2>
 
-    <button onclick="createRoom()">
-      Room Uumi
-    </button>
+<input
+ id="username"
+ placeholder="Maqaa kee">
 
-    <input
-      id="roomInput"
-      type="text"
-      placeholder="Room ID galchi"
-    >
+<input
+ id="createPassword"
+ type="password"
+ placeholder="Room password (optional)">
 
-    <button onclick="joinRoom()">
-      Room Seeni
-    </button>
+<button onclick="createRoom()">
+➕ Room Uumi
+</button>
 
-    <div class="status" id="status">
-      Room hin seenne.
-    </div>
+<hr>
 
-  </div>
+<input
+ id="roomId"
+ placeholder="Room ID">
 
-  <!-- ROOM -->
-  <div class="room" id="roomBox">
+<input
+ id="joinPassword"
+ type="password"
+ placeholder="Room password">
 
-    <div class="card">
+<button onclick="joinRoom()">
+🚪 Room Seeni
+</button>
 
-      <h2>Room: <span id="roomName"></span></h2>
-
-      <p>
-        Maqaa: <strong id="myName"></strong>
-      </p>
-
-      <div class="status" id="roomStatus">
-        Connecting...
-      </div>
-
-      <div class="controls">
-
-        <button onclick="toggleMic()">
-          🎤 Mic
-        </button>
-
-        <button onclick="toggleCamera()">
-          📷 Camera
-        </button>
-
-        <button onclick="shareScreen()">
-          🖥️ Screen Share
-        </button>
-
-        <button class="danger" onclick="leaveRoom()">
-          🚪 Room Ba'i
-        </button>
-
-      </div>
-
-      <div class="videos">
-
-        <video
-          id="localVideo"
-          autoplay
-          muted
-          playsinline>
-        </video>
-
-        <div id="remoteVideos"></div>
-
-      </div>
-
-    </div>
-
-    <!-- CHAT -->
-
-    <div class="card">
-
-      <h2>💬 Chat</h2>
-
-      <div class="chat" id="chat"></div>
-
-      <input
-        id="messageInput"
-        type="text"
-        placeholder="Ergaa barreessi..."
-        onkeydown="if(event.key==='Enter') sendMessage()"
-      >
-
-      <button onclick="sendMessage()">
-        Ergi
-      </button>
-
-    </div>
-
-  </div>
+<p id="error"></p>
 
 </div>
 
+
+<!-- ROOM -->
+
+<div id="room" class="hidden">
+
+<div class="card">
+
+<h2>
+Room:
+<span id="roomTitle"></span>
+</h2>
+
+<button onclick="copyRoom()">
+🔗 Room ID Copy Godhi
+</button>
+
+</div>
+
+
+<!-- VIDEO -->
+
+<div class="card">
+
+<h3>📹 Video Call</h3>
+
+<div class="videos">
+
+<video
+ id="localVideo"
+ autoplay
+ muted
+ playsinline>
+</video>
+
+<div id="remoteVideos"></div>
+
+</div>
+
+<div class="controls">
+
+<button onclick="toggleMic()">
+🎤 Mic
+</button>
+
+<button onclick="toggleCamera()">
+📷 Camera
+</button>
+
+<button onclick="shareScreen()">
+🖥️ Screen
+</button>
+
+<button
+ class="danger"
+ onclick="leaveRoom()">
+ 🚪 Ba'i
+</button>
+
+</div>
+
+</div>
+
+
+<!-- PARTICIPANTS -->
+
+<div class="card">
+
+<h3>👥 Participants</h3>
+
+<div id="participants"></div>
+
+</div>
+
+
+<!-- CHAT -->
+
+<div class="card">
+
+<h3>💬 Chat</h3>
+
+<div
+ id="chat"
+ class="chat">
+</div>
+
+<input
+ id="message"
+ placeholder="Ergaa barreessi..."
+ onkeydown="
+ if(event.key==='Enter') sendMessage()
+ ">
+
+<button onclick="sendMessage()">
+📤 Ergi
+</button>
+
+</div>
+
+
+<!-- SETTINGS -->
+
+<div class="card">
+
+<h3>⚙️ Settings</h3>
+
+<button onclick="toggleDark()">
+🌙 Dark / Light Mode
+</button>
+
+<button onclick="changeName()">
+👤 Profile/Maqaa Jijjiiri
+</button>
+
+<button onclick="alert('Waliin-JM v2.0')">
+ℹ️ About
+</button>
+
+</div>
+
+</div>
+
+</div>
+
+
 <script>
 
-const socket = io();
+const socket=io();
 
-let username = "";
-let roomId = "";
-let localStream = null;
+let username="";
+let roomId="";
+let localStream=null;
 
-let peerConnections = {};
-
-const rtcConfig = {
-  iceServers: [
-    {
-      urls: "stun:stun.l.google.com:19302"
-    }
-  ]
-};
+let peers={};
 
 
-// ==============================
-// ROOM UUMUU
-// ==============================
+// CREATE ROOM
 
-function createRoom() {
+function createRoom(){
 
-  username = document.getElementById("username").value.trim();
+ username=document.getElementById("username").value.trim();
 
-  if (!username) {
-    alert("Maqaa kee galchi.");
-    return;
-  }
+ const password=
+ document.getElementById("createPassword").value;
 
-  socket.emit("create-room", {
-    username: username
+ if(!username){
+
+  alert("Maqaa kee galchi.");
+
+  return;
+ }
+
+ socket.emit("create-room",{
+  username,
+  password
+ });
+
+}
+
+
+// JOIN ROOM
+
+function joinRoom(){
+
+ username=
+ document.getElementById("username").value.trim();
+
+ roomId=
+ document.getElementById("roomId").value.trim();
+
+ const password=
+ document.getElementById("joinPassword").value;
+
+ if(!username||!roomId){
+
+  alert("Maqaa fi Room ID galchi.");
+
+  return;
+ }
+
+ socket.emit("join-room",{
+  roomId,
+  username,
+  password
+ });
+
+}
+
+
+// CREATED
+
+socket.on("room-created",async data=>{
+
+ roomId=data.roomId;
+
+ openRoom();
+
+ await startMedia();
+
+});
+
+
+// JOINED
+
+socket.on("room-joined",async data=>{
+
+ roomId=data.roomId;
+
+ openRoom();
+
+ await startMedia();
+
+});
+
+
+// ERROR
+
+socket.on("room-error",msg=>{
+
+ document.getElementById("error").innerText=msg;
+
+ alert(msg);
+
+});
+
+
+// OPEN
+
+function openRoom(){
+
+ document.getElementById("login")
+ .classList.add("hidden");
+
+ document.getElementById("room")
+ .classList.remove("hidden");
+
+ document.getElementById("roomTitle")
+ .innerText=roomId;
+
+}
+
+
+// MEDIA
+
+async function startMedia(){
+
+ try{
+
+  localStream=
+  await navigator.mediaDevices
+  .getUserMedia({
+   video:true,
+   audio:true
   });
-}
 
+  document.getElementById("localVideo")
+  .srcObject=localStream;
 
-// ==============================
-// ROOM SEENUU
-// ==============================
+ }catch(e){
 
-function joinRoom() {
+  alert("Camera/Mic hin argamne.");
 
-  username = document.getElementById("username").value.trim();
-  roomId = document.getElementById("roomInput").value.trim();
-
-  if (!username) {
-    alert("Maqaa kee galchi.");
-    return;
-  }
-
-  if (!roomId) {
-    alert("Room ID galchi.");
-    return;
-  }
-
-  socket.emit("join-room", {
-    roomId: roomId,
-    username: username
-  });
-}
-
-
-// ==============================
-// ROOM CREATED
-// ==============================
-
-socket.on("room-created", async (data) => {
-
-  roomId = data.roomId;
-
-  openRoom();
-
-  await startCamera();
-
-  document.getElementById("roomStatus").innerText =
-    "Room uumame. Namoota biroo eegi.";
-
-});
-
-
-// ==============================
-// ROOM JOINED
-// ==============================
-
-socket.on("room-joined", async (data) => {
-
-  roomId = data.roomId;
-
-  openRoom();
-
-  await startCamera();
-
-  document.getElementById("roomStatus").innerText =
-    "Room keessa jirta.";
-
-});
-
-
-// ==============================
-// ROOM ERROR
-// ==============================
-
-socket.on("room-error", (message) => {
-
-  alert(message);
-
-});
-
-
-// ==============================
-// OPEN ROOM
-// ==============================
-
-function openRoom() {
-
-  document.getElementById("loginBox").style.display = "none";
-
-  document.getElementById("roomBox").style.display = "block";
-
-  document.getElementById("roomName").innerText = roomId;
-
-  document.getElementById("myName").innerText = username;
+ }
 
 }
 
 
-// ==============================
+// MIC
+
+function toggleMic(){
+
+ if(!localStream)return;
+
+ localStream.getAudioTracks()
+ .forEach(t=>{
+  t.enabled=!t.enabled;
+ });
+
+}
+
+
 // CAMERA
-// ==============================
 
-async function startCamera() {
+function toggleCamera(){
 
-  try {
+ if(!localStream)return;
 
-    localStream =
-      await navigator.mediaDevices.getUserMedia({
-        video: true,
-        audio: true
-      });
-
-    document.getElementById("localVideo").srcObject =
-      localStream;
-
-  } catch (error) {
-
-    console.error(error);
-
-    alert(
-      "Camera ykn microphone argachuu hin dandeenye."
-    );
-
-  }
+ localStream.getVideoTracks()
+ .forEach(t=>{
+  t.enabled=!t.enabled;
+ });
 
 }
 
 
-// ==============================
-// MICROPHONE
-// ==============================
+// SCREEN
 
-function toggleMic() {
+async function shareScreen(){
 
-  if (!localStream) return;
+ try{
 
-  const audioTracks =
-    localStream.getAudioTracks();
-
-  audioTracks.forEach(track => {
-    track.enabled = !track.enabled;
+  const screen=
+  await navigator.mediaDevices
+  .getDisplayMedia({
+   video:true
   });
 
-}
+  document.getElementById("localVideo")
+  .srcObject=screen;
 
-
-// ==============================
-// CAMERA
-// ==============================
-
-function toggleCamera() {
-
-  if (!localStream) return;
-
-  const videoTracks =
-    localStream.getVideoTracks();
-
-  videoTracks.forEach(track => {
-    track.enabled = !track.enabled;
-  });
+ }catch(e){}
 
 }
 
 
-// ==============================
-// SCREEN SHARE
-// ==============================
-
-async function shareScreen() {
-
-  try {
-
-    const screenStream =
-      await navigator.mediaDevices.getDisplayMedia({
-        video: true
-      });
-
-    const screenTrack =
-      screenStream.getVideoTracks()[0];
-
-    const localVideo =
-      document.getElementById("localVideo");
-
-    localVideo.srcObject = screenStream;
-
-    screenTrack.onended = () => {
-
-      if (localStream) {
-        localVideo.srcObject =
-          localStream;
-      }
-
-    };
-
-  } catch (error) {
-
-    console.log(error);
-
-  }
-
-}
-
-
-// ==============================
 // CHAT
-// ==============================
 
-function sendMessage() {
+function sendMessage(){
 
-  const input =
-    document.getElementById("messageInput");
+ const input=
+ document.getElementById("message");
 
-  const message =
-    input.value.trim();
+ const message=
+ input.value.trim();
 
-  if (!message) return;
+ if(!message)return;
 
-  socket.emit("chat-message", {
-    roomId: roomId,
-    username: username,
-    message: message
-  });
+ socket.emit("chat-message",{
+  message
+ });
 
-  input.value = "";
+ input.value="";
 
 }
 
 
-socket.on("chat-message", (data) => {
+socket.on("chat-message",data=>{
 
-  const chat =
-    document.getElementById("chat");
+ const chat=
+ document.getElementById("chat");
 
-  const div =
-    document.createElement("div");
+ const div=
+ document.createElement("div");
 
-  div.className = "message";
+ div.className="msg";
 
-  div.innerHTML =
-    "<strong>" +
-    escapeHtml(data.username) +
-    ":</strong> " +
-    escapeHtml(data.message);
+ div.innerHTML=
+ "<b>"+safe(data.username)+
+ ":</b> "+
+ safe(data.message);
 
-  chat.appendChild(div);
+ chat.appendChild(div);
 
-  chat.scrollTop =
-    chat.scrollHeight;
+ chat.scrollTop=chat.scrollHeight;
 
 });
 
 
-// ==============================
-// WEBRTC USER JOIN
-// ==============================
+// TYPING
 
-socket.on("user-joined", async (data) => {
+document
+.getElementById("message")
+.addEventListener("input",()=>{
 
-  document.getElementById("roomStatus").innerText =
-    data.username + " room keessa seene.";
+ socket.emit("typing");
 
-  if (data.socketId) {
+});
 
-    await createOffer(data.socketId);
+
+// PARTICIPANTS
+
+socket.on("participants",users=>{
+
+ const box=
+ document.getElementById("participants");
+
+ box.innerHTML="";
+
+ users.forEach(user=>{
+
+  const div=
+  document.createElement("div");
+
+  div.className="participant";
+
+  div.innerHTML=
+  "<span>👤 "+
+  safe(user.username)+
+  (user.isAdmin?" 👑":"")+
+  "</span>";
+
+  box.appendChild(div);
+
+ });
+
+});
+
+
+// USER JOINED
+
+socket.on("user-joined",async data=>{
+
+ await createOffer(data.socketId);
+
+});
+
+
+// PEER
+
+function makePeer(id){
+
+ if(peers[id])return peers[id];
+
+ const pc=
+ new RTCPeerConnection({
+
+  iceServers:[
+   {
+    urls:"stun:stun.l.google.com:19302"
+   }
+  ]
+
+ });
+
+ peers[id]=pc;
+
+ if(localStream){
+
+  localStream
+  .getTracks()
+  .forEach(track=>{
+   pc.addTrack(track,localStream);
+  });
+
+ }
+
+ pc.onicecandidate=e=>{
+
+  if(e.candidate){
+
+   socket.emit("ice-candidate",{
+    target:id,
+    candidate:e.candidate
+   });
 
   }
 
-});
+ };
+
+ pc.ontrack=e=>{
+
+  let v=
+  document.getElementById("remote-"+id);
+
+  if(!v){
+
+   v=document.createElement("video");
+
+   v.id="remote-"+id;
+
+   v.autoplay=true;
+   v.playsInline=true;
+
+   document
+   .getElementById("remoteVideos")
+   .appendChild(v);
+
+  }
+
+  v.srcObject=e.streams[0];
+
+ };
+
+ return pc;
+
+}
 
 
-// ==============================
 // OFFER
-// ==============================
 
-async function createOffer(socketId) {
+async function createOffer(id){
 
-  const pc =
-    createPeerConnection(socketId);
+ const pc=makePeer(id);
 
-  const offer =
-    await pc.createOffer();
+ const offer=
+ await pc.createOffer();
 
-  await pc.setLocalDescription(offer);
+ await pc.setLocalDescription(offer);
 
-  socket.emit("offer", {
-    target: socketId,
-    offer: offer
-  });
+ socket.emit("offer",{
+  target:id,
+  offer
+ });
 
 }
 
 
-// ==============================
 // RECEIVE OFFER
-// ==============================
 
-socket.on("offer", async (data) => {
+socket.on("offer",async data=>{
 
-  const pc =
-    createPeerConnection(data.sender);
+ const pc=
+ makePeer(data.sender);
 
-  await pc.setRemoteDescription(
-    new RTCSessionDescription(data.offer)
-  );
+ await pc.setRemoteDescription(
+  new RTCSessionDescription(data.offer)
+ );
 
-  const answer =
-    await pc.createAnswer();
+ const answer=
+ await pc.createAnswer();
 
-  await pc.setLocalDescription(answer);
+ await pc.setLocalDescription(answer);
 
-  socket.emit("answer", {
-    target: data.sender,
-    answer: answer
-  });
-
-});
-
-
-// ==============================
-// RECEIVE ANSWER
-// ==============================
-
-socket.on("answer", async (data) => {
-
-  const pc =
-    peerConnections[data.sender];
-
-  if (!pc) return;
-
-  await pc.setRemoteDescription(
-    new RTCSessionDescription(data.answer)
-  );
+ socket.emit("answer",{
+  target:data.sender,
+  answer
+ });
 
 });
 
 
-// ==============================
+// ANSWER
+
+socket.on("answer",async data=>{
+
+ const pc=peers[data.sender];
+
+ if(pc){
+
+  await pc.setRemoteDescription(
+   new RTCSessionDescription(data.answer)
+  );
+
+ }
+
+});
+
+
 // ICE
-// ==============================
 
-socket.on("ice-candidate", async (data) => {
+socket.on("ice-candidate",async data=>{
 
-  const pc =
-    peerConnections[data.sender];
+ const pc=peers[data.sender];
 
-  if (!pc) return;
+ if(!pc)return;
 
-  try {
+ try{
 
-    await pc.addIceCandidate(
-      new RTCIceCandidate(data.candidate)
-    );
+  await pc.addIceCandidate(
+   new RTCIceCandidate(data.candidate)
+  );
 
-  } catch (error) {
-
-    console.error(error);
-
-  }
+ }catch(e){}
 
 });
 
 
-// ==============================
-// CREATE PEER
-// ==============================
-
-function createPeerConnection(socketId) {
-
-  if (peerConnections[socketId]) {
-
-    return peerConnections[socketId];
-
-  }
-
-  const pc =
-    new RTCPeerConnection(rtcConfig);
-
-  peerConnections[socketId] = pc;
-
-
-  if (localStream) {
-
-    localStream.getTracks().forEach(track => {
-
-      pc.addTrack(track, localStream);
-
-    });
-
-  }
-
-
-  pc.onicecandidate = (event) => {
-
-    if (event.candidate) {
-
-      socket.emit("ice-candidate", {
-
-        target: socketId,
-
-        candidate: event.candidate
-
-      });
-
-    }
-
-  };
-
-
-  pc.ontrack = (event) => {
-
-    let video =
-      document.getElementById(
-        "remote-" + socketId
-      );
-
-    if (!video) {
-
-      video =
-        document.createElement("video");
-
-      video.id =
-        "remote-" + socketId;
-
-      video.autoplay = true;
-
-      video.playsInline = true;
-
-      document
-        .getElementById("remoteVideos")
-        .appendChild(video);
-
-    }
-
-    video.srcObject =
-      event.streams[0];
-
-  };
-
-
-  return pc;
-
-}
-
-
-// ==============================
 // USER LEFT
-// ==============================
 
-socket.on("user-left", (socketId) => {
+socket.on("user-left",id=>{
 
-  const video =
-    document.getElementById(
-      "remote-" + socketId
-    );
+ const v=
+ document.getElementById("remote-"+id);
 
-  if (video) {
-    video.remove();
-  }
+ if(v)v.remove();
 
-  if (peerConnections[socketId]) {
+ if(peers[id]){
 
-    peerConnections[socketId].close();
+  peers[id].close();
 
-    delete peerConnections[socketId];
+  delete peers[id];
 
-  }
+ }
 
 });
 
 
-// ==============================
-// LEAVE ROOM
-// ==============================
+// COPY ROOM
 
-function leaveRoom() {
+function copyRoom(){
 
-  if (localStream) {
+ navigator.clipboard.writeText(roomId);
 
-    localStream.getTracks().forEach(track => {
-      track.stop();
-    });
-
-  }
-
-  Object.values(peerConnections)
-    .forEach(pc => pc.close());
-
-  peerConnections = {};
-
-  location.reload();
+ alert("Room ID copied.");
 
 }
 
 
-// ==============================
+// DARK
+
+function toggleDark(){
+
+ document.body.classList.toggle("dark");
+
+ localStorage.setItem(
+  "dark",
+  document.body.classList.contains("dark")
+ );
+
+}
+
+if(localStorage.getItem("dark")==="true"){
+
+ document.body.classList.add("dark");
+
+}
+
+
+// CHANGE NAME
+
+function changeName(){
+
+ const name=
+ prompt("Maqaa haaraa galchi:",username);
+
+ if(name){
+
+  username=name;
+
+  alert("Maqaan jijjiirame.");
+
+ }
+
+}
+
+
+// LEAVE
+
+function leaveRoom(){
+
+ if(localStream){
+
+  localStream
+  .getTracks()
+  .forEach(t=>t.stop());
+
+ }
+
+ location.reload();
+
+}
+
+
 // SECURITY
-// ==============================
 
-function escapeHtml(text) {
+function safe(text){
 
-  const div =
-    document.createElement("div");
+ const div=
+ document.createElement("div");
 
-  div.textContent = text;
+ div.textContent=text;
 
-  return div.innerHTML;
+ return div.innerHTML;
 
 }
 
