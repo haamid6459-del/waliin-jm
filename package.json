@@ -1,0 +1,13 @@
+{
+  "name": "waliin-jm",
+  "version": "1.0.0",
+  "description": "Waliin-JM - HD Chat, Voice, Video and Room App",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "socket.io": "^4.8.1"
+  }
+}
