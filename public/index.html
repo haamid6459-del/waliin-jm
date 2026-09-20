@@ -3,7 +3,8 @@
 <head>
 
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport"
+ content="width=device-width,initial-scale=1">
 
 <title>Waliin-JM</title>
 
@@ -30,7 +31,7 @@ body.dark{
 header{
  background:#176b45;
  color:white;
- padding:16px;
+ padding:15px;
  display:flex;
  justify-content:space-between;
  align-items:center;
@@ -44,10 +45,10 @@ header{
 
 .card{
  background:white;
- padding:18px;
- margin:12px 0;
+ padding:20px;
+ margin:15px 0;
  border-radius:15px;
- box-shadow:0 3px 12px #0001;
+ box-shadow:0 3px 12px #0002;
 }
 
 .dark .card{
@@ -70,23 +71,56 @@ button{
  border:0;
  background:#176b45;
  color:white;
+ cursor:pointer;
 }
 
-button.danger{
- background:#c62828;
+button:hover{
+ opacity:.9;
 }
 
-button.darkbtn{
+.darkbtn{
  background:#444;
+}
+
+.danger{
+ background:#c62828;
 }
 
 .hidden{
  display:none!important;
 }
 
+.tabs{
+ display:grid;
+ grid-template-columns:1fr 1fr;
+ gap:5px;
+ margin-bottom:15px;
+}
+
+.tabs button{
+ background:#ddd;
+ color:#222;
+}
+
+.tabs button.active{
+ background:#176b45;
+ color:white;
+}
+
+.error{
+ color:#c62828;
+ font-weight:bold;
+}
+
+.success{
+ color:#176b45;
+ font-weight:bold;
+}
+
 .videos{
  display:grid;
- grid-template-columns:repeat(auto-fit,minmax(240px,1fr));
+ grid-template-columns:
+ repeat(auto-fit,minmax(240px,1fr));
  gap:10px;
 }
 
@@ -125,18 +159,20 @@ video{
 .participant{
  display:flex;
  justify-content:space-between;
+ align-items:center;
  padding:9px;
  border-bottom:1px solid #ddd;
+}
+
+.small{
+ font-size:13px;
+ opacity:.7;
 }
 
 @media(max-width:600px){
 
  .controls{
    grid-template-columns:1fr;
- }
-
- header h2{
-   font-size:18px;
  }
 
 }
@@ -162,11 +198,113 @@ video{
 
 <div class="container">
 
+<!-- AUTH -->
+
+<div id="auth">
+
+<div class="card">
+
+<h2 id="authTitle">
+🔐 Waliin-JM Login
+</h2>
+
+<div class="tabs">
+
+<button
+ id="loginTab"
+ class="active"
+ onclick="showLogin()">
+ Login
+</button>
+
+<button
+ id="signupTab"
+ onclick="showSignup()">
+ Signup
+</button>
+
+</div>
+
 <!-- LOGIN -->
 
-<div id="login" class="card">
+<div id="loginForm">
 
-<h2>Waliin-JM</h2>
+<input
+ id="loginEmail"
+ type="email"
+ placeholder="Email">
+
+<input
+ id="loginPassword"
+ type="password"
+ placeholder="Password">
+
+<button onclick="login()">
+🔑 Login
+</button>
+
+</div>
+
+<!-- SIGNUP -->
+
+<div id="signupForm"
+ class="hidden">
+
+<input
+ id="signupUsername"
+ placeholder="Username">
+
+<input
+ id="signupEmail"
+ type="email"
+ placeholder="Email">
+
+<input
+ id="signupPassword"
+ type="password"
+ placeholder="Password">
+
+<button onclick="signup()">
+📝 Account Uumi
+</button>
+
+</div>
+
+<p id="authMessage"></p>
+
+</div>
+
+</div>
+
+
+<!-- APP -->
+
+<div id="app"
+ class="hidden">
+
+<div class="card">
+
+<h3>
+👤 Baga nagaan dhuftan,
+<span id="profileName"></span>
+</h3>
+
+<button
+ class="danger"
+ onclick="logout()">
+ 🚪 Logout
+</button>
+
+</div>
+
+
+<!-- ROOM LOGIN -->
+
+<div id="roomLogin">
+
+<div class="card">
+
+<h2>🏠 Room</h2>
 
 <input
  id="username"
@@ -196,14 +334,18 @@ video{
 🚪 Room Seeni
 </button>
 
-<p id="error"></p>
+<p id="roomError"
+ class="error"></p>
+
+</div>
 
 </div>
 
 
 <!-- ROOM -->
 
-<div id="room" class="hidden">
+<div id="room"
+ class="hidden">
 
 <div class="card">
 
@@ -212,14 +354,21 @@ Room:
 <span id="roomTitle"></span>
 </h2>
 
+<p>
+👥 Namoota:
+<span id="count">0</span>/10
+</p>
+
 <button onclick="copyRoom()">
-🔗 Room ID Copy Godhi
+🔗 Room ID Copy
+</button>
+
+<button onclick="shareRoom()">
+📤 Room Share
 </button>
 
 </div>
 
-
-<!-- VIDEO -->
 
 <div class="card">
 
@@ -260,10 +409,12 @@ Room:
 
 </div>
 
+<p id="connection">
+🟢 Connected
+</p>
+
 </div>
 
-
-<!-- PARTICIPANTS -->
 
 <div class="card">
 
@@ -274,23 +425,21 @@ Room:
 </div>
 
 
-<!-- CHAT -->
-
 <div class="card">
 
 <h3>💬 Chat</h3>
 
-<div
- id="chat"
+<div id="chat"
  class="chat">
 </div>
 
+<p id="typing"
+ class="small">
+</p>
+
 <input
  id="message"
- placeholder="Ergaa barreessi..."
- onkeydown="
- if(event.key==='Enter') sendMessage()
- ">
+ placeholder="Ergaa barreessi...">
 
 <button onclick="sendMessage()">
 📤 Ergi
@@ -299,23 +448,23 @@ Room:
 </div>
 
 
-<!-- SETTINGS -->
-
 <div class="card">
 
 <h3>⚙️ Settings</h3>
 
 <button onclick="toggleDark()">
-🌙 Dark / Light Mode
+🌙 Dark / Light
 </button>
 
 <button onclick="changeName()">
-👤 Profile/Maqaa Jijjiiri
+👤 Maqaa Jijjiiri
 </button>
 
-<button onclick="alert('Waliin-JM v2.0')">
+<button onclick="alert('Waliin-JM v3.0')">
 ℹ️ About
 </button>
+
+</div>
 
 </div>
 
@@ -326,23 +475,270 @@ Room:
 
 <script>
 
-const socket=io();
+const socket = io();
 
-let username="";
-let roomId="";
-let localStream=null;
+let currentUser =
+ JSON.parse(
+  localStorage.getItem("waliinUser")
+ );
 
-let peers={};
+let username = "";
+let roomId = "";
+let localStream = null;
+
+let peers = {};
+
+
+// AUTH START
+
+if(currentUser){
+
+ showApp();
+
+}
+
+
+// LOGIN TAB
+
+function showLogin(){
+
+ document.getElementById("loginForm")
+ .classList.remove("hidden");
+
+ document.getElementById("signupForm")
+ .classList.add("hidden");
+
+ document.getElementById("loginTab")
+ .classList.add("active");
+
+ document.getElementById("signupTab")
+ .classList.remove("active");
+
+}
+
+
+// SIGNUP TAB
+
+function showSignup(){
+
+ document.getElementById("loginForm")
+ .classList.add("hidden");
+
+ document.getElementById("signupForm")
+ .classList.remove("hidden");
+
+ document.getElementById("loginTab")
+ .classList.remove("active");
+
+ document.getElementById("signupTab")
+ .classList.add("active");
+
+}
+
+
+// SIGNUP
+
+async function signup(){
+
+ const username =
+ document.getElementById(
+  "signupUsername"
+ ).value.trim();
+
+ const email =
+ document.getElementById(
+  "signupEmail"
+ ).value.trim();
+
+ const password =
+ document.getElementById(
+  "signupPassword"
+ ).value;
+
+ if(!username || !email || !password){
+
+  showAuthMessage(
+   "Odeeffannoo hunda guuti.",
+   false
+  );
+
+  return;
+ }
+
+ const response =
+ await fetch("/api/signup",{
+
+  method:"POST",
+
+  headers:{
+   "Content-Type":
+   "application/json"
+  },
+
+  body:JSON.stringify({
+   username,
+   email,
+   password
+  })
+
+ });
+
+ const data =
+ await response.json();
+
+ showAuthMessage(
+  data.message,
+  data.success
+ );
+
+ if(data.success){
+
+  showLogin();
+
+  document.getElementById(
+   "loginEmail"
+  ).value=email;
+
+ }
+
+}
+
+
+// LOGIN
+
+async function login(){
+
+ const email =
+ document.getElementById(
+  "loginEmail"
+ ).value.trim();
+
+ const password =
+ document.getElementById(
+  "loginPassword"
+ ).value;
+
+ if(!email || !password){
+
+  showAuthMessage(
+   "Email fi password guuti.",
+   false
+  );
+
+  return;
+ }
+
+ const response =
+ await fetch("/api/login",{
+
+  method:"POST",
+
+  headers:{
+   "Content-Type":
+   "application/json"
+  },
+
+  body:JSON.stringify({
+   email,
+   password
+  })
+
+ });
+
+ const data =
+ await response.json();
+
+ if(!data.success){
+
+  showAuthMessage(
+   data.message,
+   false
+  );
+
+  return;
+ }
+
+ currentUser=data.user;
+
+ localStorage.setItem(
+  "waliinUser",
+  JSON.stringify(currentUser)
+ );
+
+ showApp();
+
+}
+
+
+// SHOW APP
+
+function showApp(){
+
+ document.getElementById("auth")
+ .classList.add("hidden");
+
+ document.getElementById("app")
+ .classList.remove("hidden");
+
+ document.getElementById(
+  "profileName"
+ ).innerText =
+ currentUser.username;
+
+ document.getElementById(
+  "username"
+ ).value =
+ currentUser.username;
+
+}
+
+
+// MESSAGE
+
+function showAuthMessage(
+ message,
+ success
+){
+
+ const box =
+ document.getElementById(
+  "authMessage"
+ );
+
+ box.innerText=message;
+
+ box.className =
+ success ? "success" : "error";
+
+}
+
+
+// LOGOUT
+
+function logout(){
+
+ localStorage.removeItem(
+  "waliinUser"
+ );
+
+ location.reload();
+
+}
 
 
 // CREATE ROOM
 
 function createRoom(){
 
- username=document.getElementById("username").value.trim();
+ username =
+ document.getElementById(
+  "username"
+ ).value.trim();
 
- const password=
- document.getElementById("createPassword").value;
+ const password =
+ document.getElementById(
+  "createPassword"
+ ).value;
 
  if(!username){
 
@@ -351,10 +747,13 @@ function createRoom(){
   return;
  }
 
- socket.emit("create-room",{
-  username,
-  password
- });
+ socket.emit(
+  "create-room",
+  {
+   username,
+   password
+  }
+ );
 
 }
 
@@ -363,80 +762,106 @@ function createRoom(){
 
 function joinRoom(){
 
- username=
- document.getElementById("username").value.trim();
+ username =
+ document.getElementById(
+  "username"
+ ).value.trim();
 
- roomId=
- document.getElementById("roomId").value.trim();
+ roomId =
+ document.getElementById(
+  "roomId"
+ ).value.trim()
+ .toUpperCase();
 
- const password=
- document.getElementById("joinPassword").value;
+ const password =
+ document.getElementById(
+  "joinPassword"
+ ).value;
 
- if(!username||!roomId){
+ if(!username || !roomId){
 
-  alert("Maqaa fi Room ID galchi.");
+  alert(
+   "Maqaa fi Room ID galchi."
+  );
 
   return;
  }
 
- socket.emit("join-room",{
-  roomId,
-  username,
-  password
- });
+ socket.emit(
+  "join-room",
+  {
+   roomId,
+   username,
+   password
+  }
+ );
 
 }
 
 
 // CREATED
 
-socket.on("room-created",async data=>{
+socket.on(
+ "room-created",
+ async data=>{
 
- roomId=data.roomId;
+  roomId=data.roomId;
 
- openRoom();
+  openRoom();
 
- await startMedia();
+  await startMedia();
 
-});
+ }
+);
 
 
 // JOINED
 
-socket.on("room-joined",async data=>{
+socket.on(
+ "room-joined",
+ async data=>{
 
- roomId=data.roomId;
+  roomId=data.roomId;
 
- openRoom();
+  openRoom();
 
- await startMedia();
+  await startMedia();
 
-});
+ }
+);
 
 
 // ERROR
 
-socket.on("room-error",msg=>{
+socket.on(
+ "room-error",
+ msg=>{
 
- document.getElementById("error").innerText=msg;
+  document.getElementById(
+   "roomError"
+  ).innerText=msg;
 
- alert(msg);
+  alert(msg);
 
-});
+ }
+);
 
 
-// OPEN
+// OPEN ROOM
 
 function openRoom(){
 
- document.getElementById("login")
- .classList.add("hidden");
+ document.getElementById(
+  "roomLogin"
+ ).classList.add("hidden");
 
- document.getElementById("room")
- .classList.remove("hidden");
+ document.getElementById(
+  "room"
+ ).classList.remove("hidden");
 
- document.getElementById("roomTitle")
- .innerText=roomId;
+ document.getElementById(
+  "roomTitle"
+ ).innerText=roomId;
 
 }
 
@@ -447,19 +872,22 @@ async function startMedia(){
 
  try{
 
-  localStream=
-  await navigator.mediaDevices
-  .getUserMedia({
-   video:true,
-   audio:true
-  });
+  localStream =
+   await navigator.mediaDevices
+   .getUserMedia({
+    video:true,
+    audio:true
+   });
 
-  document.getElementById("localVideo")
-  .srcObject=localStream;
+  document.getElementById(
+   "localVideo"
+  ).srcObject=localStream;
 
- }catch(e){
+ }catch(error){
 
-  alert("Camera/Mic hin argamne.");
+  alert(
+   "Camera/Mic hin argamne."
+  );
 
  }
 
@@ -472,9 +900,11 @@ function toggleMic(){
 
  if(!localStream)return;
 
- localStream.getAudioTracks()
- .forEach(t=>{
-  t.enabled=!t.enabled;
+ localStream
+ .getAudioTracks()
+ .forEach(track=>{
+  track.enabled =
+   !track.enabled;
  });
 
 }
@@ -486,9 +916,11 @@ function toggleCamera(){
 
  if(!localStream)return;
 
- localStream.getVideoTracks()
- .forEach(t=>{
-  t.enabled=!t.enabled;
+ localStream
+ .getVideoTracks()
+ .forEach(track=>{
+  track.enabled =
+   !track.enabled;
  });
 
 }
@@ -500,16 +932,17 @@ async function shareScreen(){
 
  try{
 
-  const screen=
-  await navigator.mediaDevices
-  .getDisplayMedia({
-   video:true
-  });
+  const screen =
+   await navigator.mediaDevices
+   .getDisplayMedia({
+    video:true
+   });
 
-  document.getElementById("localVideo")
-  .srcObject=screen;
+  document.getElementById(
+   "localVideo"
+  ).srcObject=screen;
 
- }catch(e){}
+ }catch(error){}
 
 }
 
@@ -518,110 +951,186 @@ async function shareScreen(){
 
 function sendMessage(){
 
- const input=
- document.getElementById("message");
+ const input =
+  document.getElementById(
+   "message"
+  );
 
- const message=
- input.value.trim();
+ const message =
+  input.value.trim();
 
  if(!message)return;
 
- socket.emit("chat-message",{
-  message
- });
+ socket.emit(
+  "chat-message",
+  {message}
+ );
 
  input.value="";
 
 }
 
 
-socket.on("chat-message",data=>{
+socket.on(
+ "chat-message",
+ data=>{
 
- const chat=
- document.getElementById("chat");
+  const chat =
+   document.getElementById(
+    "chat"
+   );
 
- const div=
- document.createElement("div");
+  const div =
+   document.createElement(
+    "div"
+   );
 
- div.className="msg";
+  div.className="msg";
 
- div.innerHTML=
- "<b>"+safe(data.username)+
- ":</b> "+
- safe(data.message);
+  div.innerHTML =
+   "<b>"+
+   safe(data.username)+
+   ":</b> "+
+   safe(data.message);
 
- chat.appendChild(div);
+  chat.appendChild(div);
 
- chat.scrollTop=chat.scrollHeight;
+  chat.scrollTop =
+   chat.scrollHeight;
 
-});
+ }
+);
 
 
 // TYPING
 
 document
 .getElementById("message")
-.addEventListener("input",()=>{
+.addEventListener(
+ "input",
+ ()=>{
+  socket.emit("typing");
+ }
+);
 
- socket.emit("typing");
 
-});
+socket.on(
+ "typing",
+ data=>{
+
+  const box =
+   document.getElementById(
+    "typing"
+   );
+
+  box.innerText =
+   data.username+
+   " barreessaa jira...";
+
+  clearTimeout(
+   window.typingTimer
+  );
+
+  window.typingTimer =
+   setTimeout(()=>{
+    box.innerText="";
+   },1500);
+
+ }
+);
 
 
 // PARTICIPANTS
 
-socket.on("participants",users=>{
+socket.on(
+ "participants",
+ users=>{
 
- const box=
- document.getElementById("participants");
+  const box =
+   document.getElementById(
+    "participants"
+   );
 
- box.innerHTML="";
+  box.innerHTML="";
 
- users.forEach(user=>{
+  document.getElementById(
+   "count"
+  ).innerText=users.length;
 
-  const div=
-  document.createElement("div");
+  users.forEach(user=>{
 
-  div.className="participant";
+   const div =
+    document.createElement(
+     "div"
+    );
 
-  div.innerHTML=
-  "<span>👤 "+
-  safe(user.username)+
-  (user.isAdmin?" 👑":"")+
-  "</span>";
+   div.className=
+    "participant";
 
-  box.appendChild(div);
+   let html =
+    "<span>👤 "+
+    safe(user.username);
 
- });
+   if(user.isAdmin){
+    html+=" 👑";
+   }
 
-});
+   html+="</span>";
+
+   if(
+    currentUser &&
+    user.socketId !== socket.id
+   ){
+
+    html+=
+     "<span class='small'>"+
+     "User"+
+     "</span>";
+
+   }
+
+   div.innerHTML=html;
+
+   box.appendChild(div);
+
+  });
+
+ }
+);
 
 
 // USER JOINED
 
-socket.on("user-joined",async data=>{
+socket.on(
+ "user-joined",
+ async data=>{
 
- await createOffer(data.socketId);
+  await createOffer(
+   data.socketId
+  );
 
-});
+ }
+);
 
 
 // PEER
 
 function makePeer(id){
 
- if(peers[id])return peers[id];
+ if(peers[id])
+  return peers[id];
 
- const pc=
- new RTCPeerConnection({
+ const pc =
+  new RTCPeerConnection({
 
-  iceServers:[
-   {
-    urls:"stun:stun.l.google.com:19302"
-   }
-  ]
+   iceServers:[
+    {
+     urls:
+      "stun:stun.l.google.com:19302"
+    }
+   ]
 
- });
+  });
 
  peers[id]=pc;
 
@@ -630,47 +1139,65 @@ function makePeer(id){
   localStream
   .getTracks()
   .forEach(track=>{
-   pc.addTrack(track,localStream);
+   pc.addTrack(
+    track,
+    localStream
+   );
   });
 
  }
 
- pc.onicecandidate=e=>{
+ pc.onicecandidate =
+  event=>{
 
-  if(e.candidate){
+   if(event.candidate){
 
-   socket.emit("ice-candidate",{
-    target:id,
-    candidate:e.candidate
-   });
+    socket.emit(
+     "ice-candidate",
+     {
+      target:id,
+      candidate:
+       event.candidate
+     }
+    );
 
-  }
+   }
 
- };
+  };
 
- pc.ontrack=e=>{
+ pc.ontrack =
+  event=>{
 
-  let v=
-  document.getElementById("remote-"+id);
+   let video =
+    document.getElementById(
+     "remote-"+id
+    );
 
-  if(!v){
+   if(!video){
 
-   v=document.createElement("video");
+    video =
+     document.createElement(
+      "video"
+     );
 
-   v.id="remote-"+id;
+    video.id =
+     "remote-"+id;
 
-   v.autoplay=true;
-   v.playsInline=true;
+    video.autoplay=true;
+    video.playsInline=true;
 
-   document
-   .getElementById("remoteVideos")
-   .appendChild(v);
+    document
+    .getElementById(
+     "remoteVideos"
+    )
+    .appendChild(video);
 
-  }
+   }
 
-  v.srcObject=e.streams[0];
+   video.srcObject =
+    event.streams[0];
 
- };
+  };
 
  return pc;
 
@@ -681,128 +1208,249 @@ function makePeer(id){
 
 async function createOffer(id){
 
- const pc=makePeer(id);
+ const pc =
+  makePeer(id);
 
- const offer=
- await pc.createOffer();
+ const offer =
+  await pc.createOffer();
 
- await pc.setLocalDescription(offer);
-
- socket.emit("offer",{
-  target:id,
+ await pc.setLocalDescription(
   offer
- });
+ );
+
+ socket.emit(
+  "offer",
+  {
+   target:id,
+   offer
+  }
+ );
 
 }
 
 
 // RECEIVE OFFER
 
-socket.on("offer",async data=>{
+socket.on(
+ "offer",
+ async data=>{
 
- const pc=
- makePeer(data.sender);
+  const pc =
+   makePeer(data.sender);
 
- await pc.setRemoteDescription(
-  new RTCSessionDescription(data.offer)
- );
+  await pc.setRemoteDescription(
+   new RTCSessionDescription(
+    data.offer
+   )
+  );
 
- const answer=
- await pc.createAnswer();
+  const answer =
+   await pc.createAnswer();
 
- await pc.setLocalDescription(answer);
+  await pc.setLocalDescription(
+   answer
+  );
 
- socket.emit("answer",{
-  target:data.sender,
-  answer
- });
+  socket.emit(
+   "answer",
+   {
+    target:data.sender,
+    answer
+   }
+  );
 
-});
+ }
+);
 
 
 // ANSWER
 
-socket.on("answer",async data=>{
+socket.on(
+ "answer",
+ async data=>{
 
- const pc=peers[data.sender];
+  const pc =
+   peers[data.sender];
 
- if(pc){
+  if(pc){
 
-  await pc.setRemoteDescription(
-   new RTCSessionDescription(data.answer)
-  );
+   await pc.setRemoteDescription(
+    new RTCSessionDescription(
+     data.answer
+    )
+   );
+
+  }
 
  }
-
-});
+);
 
 
 // ICE
 
-socket.on("ice-candidate",async data=>{
+socket.on(
+ "ice-candidate",
+ async data=>{
 
- const pc=peers[data.sender];
+  const pc =
+   peers[data.sender];
 
- if(!pc)return;
+  if(!pc)return;
 
- try{
+  try{
 
-  await pc.addIceCandidate(
-   new RTCIceCandidate(data.candidate)
-  );
+   await pc.addIceCandidate(
+    new RTCIceCandidate(
+     data.candidate
+    )
+   );
 
- }catch(e){}
+  }catch(error){}
 
-});
+ }
+);
 
 
 // USER LEFT
 
-socket.on("user-left",id=>{
+socket.on(
+ "user-left",
+ id=>{
 
- const v=
- document.getElementById("remote-"+id);
+  const video =
+   document.getElementById(
+    "remote-"+id
+   );
 
- if(v)v.remove();
+  if(video)
+   video.remove();
 
- if(peers[id]){
+  if(peers[id]){
 
-  peers[id].close();
+   peers[id].close();
 
-  delete peers[id];
+   delete peers[id];
+
+  }
 
  }
+);
 
-});
+
+// FORCE MUTE
+
+socket.on(
+ "force-mute",
+ ()=>{
+
+  if(!localStream)return;
+
+  localStream
+  .getAudioTracks()
+  .forEach(track=>{
+   track.enabled=false;
+  });
+
+  alert(
+   "Adminiin microphone kee cufe."
+  );
+
+ }
+);
+
+
+// REMOVED
+
+socket.on(
+ "removed-from-room",
+ ()=>{
+
+  alert(
+   "Ati room keessaa baafamte."
+  );
+
+  location.reload();
+
+ }
+);
 
 
 // COPY ROOM
 
 function copyRoom(){
 
- navigator.clipboard.writeText(roomId);
+ navigator.clipboard
+ .writeText(roomId);
 
- alert("Room ID copied.");
-
-}
-
-
-// DARK
-
-function toggleDark(){
-
- document.body.classList.toggle("dark");
-
- localStorage.setItem(
-  "dark",
-  document.body.classList.contains("dark")
+ alert(
+  "Room ID copied."
  );
 
 }
 
-if(localStorage.getItem("dark")==="true"){
 
- document.body.classList.add("dark");
+// SHARE ROOM
+
+async function shareRoom(){
+
+ const link =
+  location.origin+
+  "?room="+
+  roomId;
+
+ if(
+  navigator.share
+ ){
+
+  try{
+
+   await navigator.share({
+    title:"Waliin-JM Room",
+    text:
+     "Room Waliin-JM seeni",
+    url:link
+   });
+
+  }catch(e){}
+
+ }else{
+
+  navigator.clipboard
+   .writeText(link);
+
+  alert(
+   "Room link copied."
+  );
+
+ }
+
+}
+
+
+// DARK MODE
+
+function toggleDark(){
+
+ document.body
+ .classList
+ .toggle("dark");
+
+ localStorage.setItem(
+  "dark",
+  document.body.classList
+  .contains("dark")
+ );
+
+}
+
+if(
+ localStorage.getItem("dark")
+ ==="true"
+){
+
+ document.body
+ .classList
+ .add("dark");
 
 }
 
@@ -811,14 +1459,23 @@ if(localStorage.getItem("dark")==="true"){
 
 function changeName(){
 
- const name=
- prompt("Maqaa haaraa galchi:",username);
+ const name =
+  prompt(
+   "Maqaa haaraa galchi:",
+   username
+  );
 
  if(name){
 
-  username=name;
+  username=name.trim();
 
-  alert("Maqaan jijjiirame.");
+  document.getElementById(
+   "username"
+  ).value=username;
+
+  document.getElementById(
+   "profileName"
+  ).innerText=username;
 
  }
 
@@ -833,7 +1490,9 @@ function leaveRoom(){
 
   localStream
   .getTracks()
-  .forEach(t=>t.stop());
+  .forEach(
+   track=>track.stop()
+  );
 
  }
 
@@ -846,8 +1505,10 @@ function leaveRoom(){
 
 function safe(text){
 
- const div=
- document.createElement("div");
+ const div =
+  document.createElement(
+   "div"
+  );
 
  div.textContent=text;
 
@@ -858,4 +1519,4 @@ function safe(text){
 </script>
 
 </body>
-  </html>
+ </html>
