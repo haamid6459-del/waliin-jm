@@ -1,0 +1,794 @@
+<!DOCTYPE html>
+<html lang="om">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <title>Waliin-JM</title>
+
+  <script src="/socket.io/socket.io.js"></script>
+
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: Arial, sans-serif;
+      background: #f3f5f7;
+      color: #222;
+    }
+
+    .header {
+      background: #176b45;
+      color: white;
+      padding: 16px;
+      text-align: center;
+    }
+
+    .header h1 {
+      font-size: 25px;
+    }
+
+    .container {
+      width: 95%;
+      max-width: 1000px;
+      margin: 20px auto;
+    }
+
+    .card {
+      background: white;
+      border-radius: 14px;
+      padding: 20px;
+      margin-bottom: 15px;
+      box-shadow: 0 3px 12px rgba(0,0,0,.08);
+    }
+
+    input, button {
+      width: 100%;
+      padding: 13px;
+      margin-top: 10px;
+      border-radius: 8px;
+      font-size: 16px;
+    }
+
+    input {
+      border: 1px solid #ccc;
+    }
+
+    button {
+      border: none;
+      background: #176b45;
+      color: white;
+      cursor: pointer;
+    }
+
+    button:hover {
+      opacity: .9;
+    }
+
+    .secondary {
+      background: #444;
+    }
+
+    .danger {
+      background: #c62828;
+    }
+
+    .room {
+      display: none;
+    }
+
+    .videos {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 12px;
+      margin-top: 15px;
+    }
+
+    video {
+      width: 100%;
+      min-height: 200px;
+      background: #111;
+      border-radius: 12px;
+      object-fit: cover;
+    }
+
+    .chat {
+      height: 250px;
+      overflow-y: auto;
+      border: 1px solid #ddd;
+      padding: 10px;
+      border-radius: 10px;
+      background: #fafafa;
+    }
+
+    .message {
+      padding: 8px;
+      margin-bottom: 6px;
+      background: #e7f4ed;
+      border-radius: 8px;
+    }
+
+    .controls {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .status {
+      margin-top: 10px;
+      padding: 10px;
+      border-radius: 8px;
+      background: #eef6f1;
+    }
+
+    @media(max-width:600px) {
+      .controls {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+
+<body>
+
+<div class="header">
+  <h1>Waliin-JM</h1>
+  <p>Chat • Voice • Video • Room</p>
+</div>
+
+<div class="container">
+
+  <!-- LOGIN -->
+  <div class="card" id="loginBox">
+
+    <h2>Waliin-JM keessa seeni</h2>
+
+    <input
+      id="username"
+      type="text"
+      placeholder="Maqaa kee galchi"
+    >
+
+    <button onclick="createRoom()">
+      Room Uumi
+    </button>
+
+    <input
+      id="roomInput"
+      type="text"
+      placeholder="Room ID galchi"
+    >
+
+    <button onclick="joinRoom()">
+      Room Seeni
+    </button>
+
+    <div class="status" id="status">
+      Room hin seenne.
+    </div>
+
+  </div>
+
+  <!-- ROOM -->
+  <div class="room" id="roomBox">
+
+    <div class="card">
+
+      <h2>Room: <span id="roomName"></span></h2>
+
+      <p>
+        Maqaa: <strong id="myName"></strong>
+      </p>
+
+      <div class="status" id="roomStatus">
+        Connecting...
+      </div>
+
+      <div class="controls">
+
+        <button onclick="toggleMic()">
+          🎤 Mic
+        </button>
+
+        <button onclick="toggleCamera()">
+          📷 Camera
+        </button>
+
+        <button onclick="shareScreen()">
+          🖥️ Screen Share
+        </button>
+
+        <button class="danger" onclick="leaveRoom()">
+          🚪 Room Ba'i
+        </button>
+
+      </div>
+
+      <div class="videos">
+
+        <video
+          id="localVideo"
+          autoplay
+          muted
+          playsinline>
+        </video>
+
+        <div id="remoteVideos"></div>
+
+      </div>
+
+    </div>
+
+    <!-- CHAT -->
+
+    <div class="card">
+
+      <h2>💬 Chat</h2>
+
+      <div class="chat" id="chat"></div>
+
+      <input
+        id="messageInput"
+        type="text"
+        placeholder="Ergaa barreessi..."
+        onkeydown="if(event.key==='Enter') sendMessage()"
+      >
+
+      <button onclick="sendMessage()">
+        Ergi
+      </button>
+
+    </div>
+
+  </div>
+
+</div>
+
+<script>
+
+const socket = io();
+
+let username = "";
+let roomId = "";
+let localStream = null;
+
+let peerConnections = {};
+
+const rtcConfig = {
+  iceServers: [
+    {
+      urls: "stun:stun.l.google.com:19302"
+    }
+  ]
+};
+
+
+// ==============================
+// ROOM UUMUU
+// ==============================
+
+function createRoom() {
+
+  username = document.getElementById("username").value.trim();
+
+  if (!username) {
+    alert("Maqaa kee galchi.");
+    return;
+  }
+
+  socket.emit("create-room", {
+    username: username
+  });
+}
+
+
+// ==============================
+// ROOM SEENUU
+// ==============================
+
+function joinRoom() {
+
+  username = document.getElementById("username").value.trim();
+  roomId = document.getElementById("roomInput").value.trim();
+
+  if (!username) {
+    alert("Maqaa kee galchi.");
+    return;
+  }
+
+  if (!roomId) {
+    alert("Room ID galchi.");
+    return;
+  }
+
+  socket.emit("join-room", {
+    roomId: roomId,
+    username: username
+  });
+}
+
+
+// ==============================
+// ROOM CREATED
+// ==============================
+
+socket.on("room-created", async (data) => {
+
+  roomId = data.roomId;
+
+  openRoom();
+
+  await startCamera();
+
+  document.getElementById("roomStatus").innerText =
+    "Room uumame. Namoota biroo eegi.";
+
+});
+
+
+// ==============================
+// ROOM JOINED
+// ==============================
+
+socket.on("room-joined", async (data) => {
+
+  roomId = data.roomId;
+
+  openRoom();
+
+  await startCamera();
+
+  document.getElementById("roomStatus").innerText =
+    "Room keessa jirta.";
+
+});
+
+
+// ==============================
+// ROOM ERROR
+// ==============================
+
+socket.on("room-error", (message) => {
+
+  alert(message);
+
+});
+
+
+// ==============================
+// OPEN ROOM
+// ==============================
+
+function openRoom() {
+
+  document.getElementById("loginBox").style.display = "none";
+
+  document.getElementById("roomBox").style.display = "block";
+
+  document.getElementById("roomName").innerText = roomId;
+
+  document.getElementById("myName").innerText = username;
+
+}
+
+
+// ==============================
+// CAMERA
+// ==============================
+
+async function startCamera() {
+
+  try {
+
+    localStream =
+      await navigator.mediaDevices.getUserMedia({
+        video: true,
+        audio: true
+      });
+
+    document.getElementById("localVideo").srcObject =
+      localStream;
+
+  } catch (error) {
+
+    console.error(error);
+
+    alert(
+      "Camera ykn microphone argachuu hin dandeenye."
+    );
+
+  }
+
+}
+
+
+// ==============================
+// MICROPHONE
+// ==============================
+
+function toggleMic() {
+
+  if (!localStream) return;
+
+  const audioTracks =
+    localStream.getAudioTracks();
+
+  audioTracks.forEach(track => {
+    track.enabled = !track.enabled;
+  });
+
+}
+
+
+// ==============================
+// CAMERA
+// ==============================
+
+function toggleCamera() {
+
+  if (!localStream) return;
+
+  const videoTracks =
+    localStream.getVideoTracks();
+
+  videoTracks.forEach(track => {
+    track.enabled = !track.enabled;
+  });
+
+}
+
+
+// ==============================
+// SCREEN SHARE
+// ==============================
+
+async function shareScreen() {
+
+  try {
+
+    const screenStream =
+      await navigator.mediaDevices.getDisplayMedia({
+        video: true
+      });
+
+    const screenTrack =
+      screenStream.getVideoTracks()[0];
+
+    const localVideo =
+      document.getElementById("localVideo");
+
+    localVideo.srcObject = screenStream;
+
+    screenTrack.onended = () => {
+
+      if (localStream) {
+        localVideo.srcObject =
+          localStream;
+      }
+
+    };
+
+  } catch (error) {
+
+    console.log(error);
+
+  }
+
+}
+
+
+// ==============================
+// CHAT
+// ==============================
+
+function sendMessage() {
+
+  const input =
+    document.getElementById("messageInput");
+
+  const message =
+    input.value.trim();
+
+  if (!message) return;
+
+  socket.emit("chat-message", {
+    roomId: roomId,
+    username: username,
+    message: message
+  });
+
+  input.value = "";
+
+}
+
+
+socket.on("chat-message", (data) => {
+
+  const chat =
+    document.getElementById("chat");
+
+  const div =
+    document.createElement("div");
+
+  div.className = "message";
+
+  div.innerHTML =
+    "<strong>" +
+    escapeHtml(data.username) +
+    ":</strong> " +
+    escapeHtml(data.message);
+
+  chat.appendChild(div);
+
+  chat.scrollTop =
+    chat.scrollHeight;
+
+});
+
+
+// ==============================
+// WEBRTC USER JOIN
+// ==============================
+
+socket.on("user-joined", async (data) => {
+
+  document.getElementById("roomStatus").innerText =
+    data.username + " room keessa seene.";
+
+  if (data.socketId) {
+
+    await createOffer(data.socketId);
+
+  }
+
+});
+
+
+// ==============================
+// OFFER
+// ==============================
+
+async function createOffer(socketId) {
+
+  const pc =
+    createPeerConnection(socketId);
+
+  const offer =
+    await pc.createOffer();
+
+  await pc.setLocalDescription(offer);
+
+  socket.emit("offer", {
+    target: socketId,
+    offer: offer
+  });
+
+}
+
+
+// ==============================
+// RECEIVE OFFER
+// ==============================
+
+socket.on("offer", async (data) => {
+
+  const pc =
+    createPeerConnection(data.sender);
+
+  await pc.setRemoteDescription(
+    new RTCSessionDescription(data.offer)
+  );
+
+  const answer =
+    await pc.createAnswer();
+
+  await pc.setLocalDescription(answer);
+
+  socket.emit("answer", {
+    target: data.sender,
+    answer: answer
+  });
+
+});
+
+
+// ==============================
+// RECEIVE ANSWER
+// ==============================
+
+socket.on("answer", async (data) => {
+
+  const pc =
+    peerConnections[data.sender];
+
+  if (!pc) return;
+
+  await pc.setRemoteDescription(
+    new RTCSessionDescription(data.answer)
+  );
+
+});
+
+
+// ==============================
+// ICE
+// ==============================
+
+socket.on("ice-candidate", async (data) => {
+
+  const pc =
+    peerConnections[data.sender];
+
+  if (!pc) return;
+
+  try {
+
+    await pc.addIceCandidate(
+      new RTCIceCandidate(data.candidate)
+    );
+
+  } catch (error) {
+
+    console.error(error);
+
+  }
+
+});
+
+
+// ==============================
+// CREATE PEER
+// ==============================
+
+function createPeerConnection(socketId) {
+
+  if (peerConnections[socketId]) {
+
+    return peerConnections[socketId];
+
+  }
+
+  const pc =
+    new RTCPeerConnection(rtcConfig);
+
+  peerConnections[socketId] = pc;
+
+
+  if (localStream) {
+
+    localStream.getTracks().forEach(track => {
+
+      pc.addTrack(track, localStream);
+
+    });
+
+  }
+
+
+  pc.onicecandidate = (event) => {
+
+    if (event.candidate) {
+
+      socket.emit("ice-candidate", {
+
+        target: socketId,
+
+        candidate: event.candidate
+
+      });
+
+    }
+
+  };
+
+
+  pc.ontrack = (event) => {
+
+    let video =
+      document.getElementById(
+        "remote-" + socketId
+      );
+
+    if (!video) {
+
+      video =
+        document.createElement("video");
+
+      video.id =
+        "remote-" + socketId;
+
+      video.autoplay = true;
+
+      video.playsInline = true;
+
+      document
+        .getElementById("remoteVideos")
+        .appendChild(video);
+
+    }
+
+    video.srcObject =
+      event.streams[0];
+
+  };
+
+
+  return pc;
+
+}
+
+
+// ==============================
+// USER LEFT
+// ==============================
+
+socket.on("user-left", (socketId) => {
+
+  const video =
+    document.getElementById(
+      "remote-" + socketId
+    );
+
+  if (video) {
+    video.remove();
+  }
+
+  if (peerConnections[socketId]) {
+
+    peerConnections[socketId].close();
+
+    delete peerConnections[socketId];
+
+  }
+
+});
+
+
+// ==============================
+// LEAVE ROOM
+// ==============================
+
+function leaveRoom() {
+
+  if (localStream) {
+
+    localStream.getTracks().forEach(track => {
+      track.stop();
+    });
+
+  }
+
+  Object.values(peerConnections)
+    .forEach(pc => pc.close());
+
+  peerConnections = {};
+
+  location.reload();
+
+}
+
+
+// ==============================
+// SECURITY
+// ==============================
+
+function escapeHtml(text) {
+
+  const div =
+    document.createElement("div");
+
+  div.textContent = text;
+
+  return div.innerHTML;
+
+}
+
+</script>
+
+</body>
+  </html>
