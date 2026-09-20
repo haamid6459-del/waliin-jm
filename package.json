@@ -1,7 +1,7 @@
 {
   "name": "waliin-jm",
-  "version": "1.0.0",
-  "description": "Waliin-JM - HD Chat, Voice, Video and Room App",
+  "version": "2.0.0",
+  "description": "Waliin-JM - Chat, Voice, Video and Rooms",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
