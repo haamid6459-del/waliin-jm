@@ -1,0 +1,17 @@
+{
+  "name": "Waliin-JM",
+  "short_name": "Waliin-JM",
+  "description": "Waliin-JM - HD Chat, Voice, Video and Voice Club",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#176b45",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    }
+  ]
+}
