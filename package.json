@@ -1,16 +1,16 @@
 {
   "name": "waliin-jm",
-  "version": "4.0.0",
-  "description": "Waliin-JM - Learning Voice Club, Chat, Video and Rooms",
+  "version": "1.0.0",
+  "description": "WALIIN JM Classroom, Video Call and Chat App",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
   },
   "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
     "express": "^4.21.2",
-    "socket.io": "^4.8.1",
-    "pg": "^8.16.3",
-    "bcryptjs": "^3.0.2",
-    "cors": "^2.8.5"
+    "pg": "^8.13.1",
+    "socket.io": "^4.8.1"
   }
 }
