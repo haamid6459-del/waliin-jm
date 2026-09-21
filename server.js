@@ -18,17 +18,18 @@ const io = new Server(server, {
 
 const PORT = process.env.PORT || 3000;
 
-/* =========================
-   MIDDLEWARE
-========================= */
-
 app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
 
-/* =========================
-   POSTGRESQL
-========================= */
+console.log(
+  "DATABASE_URL:",
+  process.env.DATABASE_URL ? "FOUND" : "MISSING"
+);
+
+if (!process.env.DATABASE_URL) {
+  console.error("❌ DATABASE_URL hin argamne.");
+}
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -39,35 +40,29 @@ const pool = new Pool({
 
 async function initDatabase() {
   if (!process.env.DATABASE_URL) {
-    console.error("DATABASE_URL hin argamne.");
-    return;
+    throw new Error("DATABASE_URL hin argamne.");
   }
 
-  try {
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS users (
-        id SERIAL PRIMARY KEY,
-        username VARCHAR(100) NOT NULL,
-        email VARCHAR(255) UNIQUE NOT NULL,
-        password_hash TEXT NOT NULL,
-        bio TEXT DEFAULT '',
-        avatar TEXT DEFAULT '',
-        status TEXT DEFAULT '',
-        coins INTEGER DEFAULT 1000,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
+  await pool.query("SELECT 1");
 
-    console.log("PostgreSQL database qophaa'eera.");
-  } catch (error) {
-    console.error("Database error:", error.message);
-  }
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS users (
+      id SERIAL PRIMARY KEY,
+      username VARCHAR(100) NOT NULL,
+      email VARCHAR(255) UNIQUE NOT NULL,
+      password_hash TEXT NOT NULL,
+      bio TEXT DEFAULT '',
+      avatar TEXT DEFAULT '',
+      status TEXT DEFAULT '',
+      coins INTEGER DEFAULT 1000,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  console.log("✅ PostgreSQL connected");
+  console.log("✅ Users table ready");
 }
-
-/* =========================
-   ROOMS
-========================= */
 
 const rooms = new Map();
 
@@ -115,7 +110,8 @@ function getClassroomState(room) {
     hostId: room.hostId,
     teacherId: room.teacherId,
     participants: getParticipants(room),
-    raisedHands: room.raisedHands
+    raisedHands: room.raisedHands,
+    voiceClubUsers: Array.from(room.voiceClubUsers)
   };
 }
 
@@ -131,23 +127,25 @@ function broadcastClassroom(room) {
 ========================= */
 
 app.get("/api/status", async (req, res) => {
-  let database = "disconnected";
-
   try {
     await pool.query("SELECT 1");
-    database = "PostgreSQL connected";
-  } catch (error) {
-    database = "PostgreSQL error";
-  }
 
-  res.json({
-    ok: true,
-    app: "WALIIN JM",
-    database,
-    classroom: true,
-    seats: [10, 15],
-    unlimitedAudience: true
-  });
+    res.json({
+      ok: true,
+      app: "WALIIN JM",
+      database: "PostgreSQL connected",
+      classroom: true,
+      seats: [10, 15],
+      unlimitedAudience: true
+    });
+  } catch (error) {
+    res.status(500).json({
+      ok: false,
+      app: "WALIIN JM",
+      database: "PostgreSQL error",
+      error: error.message
+    });
+  }
 });
 
 /* =========================
@@ -156,11 +154,7 @@ app.get("/api/status", async (req, res) => {
 
 app.post("/api/signup", async (req, res) => {
   try {
-    const {
-      username,
-      email,
-      password
-    } = req.body;
+    const { username, email, password } = req.body;
 
     if (!username || !email || !password) {
       return res.status(400).json({
@@ -169,23 +163,23 @@ app.post("/api/signup", async (req, res) => {
       });
     }
 
-    const normalizedEmail =
-      String(email).trim().toLowerCase();
+    const normalizedEmail = String(email)
+      .trim()
+      .toLowerCase();
 
     const existing = await pool.query(
       "SELECT id FROM users WHERE email = $1",
       [normalizedEmail]
     );
 
-    if (existing.rows.length > 0) {
+    if (existing.rows.length) {
       return res.status(409).json({
         success: false,
         message: "Email kun duraan fayyadameera."
       });
     }
 
-    const passwordHash =
-      await bcrypt.hash(password, 10);
+    const passwordHash = await bcrypt.hash(password, 10);
 
     const result = await pool.query(
       `
@@ -223,10 +217,7 @@ app.post("/api/signup", async (req, res) => {
 
 app.post("/api/login", async (req, res) => {
   try {
-    const {
-      email,
-      password
-    } = req.body;
+    const { email, password } = req.body;
 
     if (!email || !password) {
       return res.status(400).json({
@@ -235,8 +226,9 @@ app.post("/api/login", async (req, res) => {
       });
     }
 
-    const normalizedEmail =
-      String(email).trim().toLowerCase();
+    const normalizedEmail = String(email)
+      .trim()
+      .toLowerCase();
 
     const result = await pool.query(
       `
@@ -255,7 +247,7 @@ app.post("/api/login", async (req, res) => {
       [normalizedEmail]
     );
 
-    if (result.rows.length === 0) {
+    if (!result.rows.length) {
       return res.status(401).json({
         success: false,
         message: "Email ykn password sirrii miti."
@@ -302,25 +294,32 @@ app.post("/api/login", async (req, res) => {
 });
 
 /* =========================
-   PROFILE
+   USER PROFILE
 ========================= */
 
 app.get("/api/user/:email", async (req, res) => {
   try {
-    const email =
-      String(req.params.email).trim().toLowerCase();
+    const email = String(req.params.email)
+      .trim()
+      .toLowerCase();
 
     const result = await pool.query(
       `
-      SELECT id, username, email, bio,
-             avatar, status, coins
+      SELECT
+        id,
+        username,
+        email,
+        bio,
+        avatar,
+        status,
+        coins
       FROM users
       WHERE email = $1
       `,
       [email]
     );
 
-    if (result.rows.length === 0) {
+    if (!result.rows.length) {
       return res.status(404).json({
         success: false,
         message: "User hin argamne."
@@ -348,16 +347,14 @@ app.get("/api/user/:email", async (req, res) => {
 
 io.on("connection", socket => {
 
-  console.log("Connected:", socket.id);
+  console.log("🟢 Connected:", socket.id);
 
-  /* =======================
-     CREATE ROOM
-  ======================= */
+  /* CREATE ROOM */
 
   socket.on("create-room", (data, callback) => {
 
     const username =
-      data?.username || "Guest";
+      String(data?.username || "Guest");
 
     const seatCount =
       Number(data?.seatCount) === 15
@@ -377,7 +374,8 @@ io.on("connection", socket => {
       users: new Map(),
       raisedHands: [],
       messages: [],
-      gifts: []
+      gifts: [],
+      voiceClubUsers: new Set()
     };
 
     const user = {
@@ -394,6 +392,7 @@ io.on("connection", socket => {
     rooms.set(roomId, room);
 
     socket.join(roomId);
+
     socket.data.roomId = roomId;
     socket.data.username = username;
 
@@ -403,16 +402,21 @@ io.on("connection", socket => {
     });
 
     broadcastClassroom(room);
+
+    console.log(
+      `🏠 Room created: ${roomId}`
+    );
   });
 
-  /* =======================
-     JOIN ROOM
-  ======================= */
+  /* JOIN ROOM */
 
   socket.on("join-room", (data, callback) => {
 
-    const room =
-      rooms.get(data?.roomId);
+    const room = rooms.get(
+      String(data?.roomId || "")
+        .trim()
+        .toUpperCase()
+    );
 
     if (!room) {
       return callback?.({
@@ -423,7 +427,8 @@ io.on("connection", socket => {
 
     if (
       room.password &&
-      room.password !== (data?.password || "")
+      room.password !==
+      (data?.password || "")
     ) {
       return callback?.({
         success: false,
@@ -432,7 +437,7 @@ io.on("connection", socket => {
     }
 
     const username =
-      data?.username || "Guest";
+      String(data?.username || "Guest");
 
     const user = {
       socketId: socket.id,
@@ -444,9 +449,13 @@ io.on("connection", socket => {
       handRaised: false
     };
 
-    room.users.set(socket.id, user);
+    room.users.set(
+      socket.id,
+      user
+    );
 
     socket.join(room.id);
+
     socket.data.roomId = room.id;
     socket.data.username = username;
 
@@ -467,9 +476,7 @@ io.on("connection", socket => {
     broadcastClassroom(room);
   });
 
-  /* =======================
-     PROMOTE TO SEAT
-  ======================= */
+  /* PROMOTE TO SEAT */
 
   socket.on(
     "promote-to-seat",
@@ -485,8 +492,10 @@ io.on("connection", socket => {
 
       if (
         !requester ||
-        (requester.role !== "host" &&
-         requester.role !== "teacher")
+        (
+          requester.role !== "host" &&
+          requester.role !== "teacher"
+        )
       ) {
         return callback?.({
           success: false,
@@ -542,7 +551,6 @@ io.on("connection", socket => {
 
       seat.socketId = target.socketId;
       seat.username = target.username;
-      seat.micOn = false;
 
       target.seat = seatNumber;
       target.role = "student";
@@ -555,9 +563,7 @@ io.on("connection", socket => {
     }
   );
 
-  /* =======================
-     SEAT TO AUDIENCE
-  ======================= */
+  /* SEAT TO AUDIENCE */
 
   socket.on(
     "seat-to-audience",
@@ -573,8 +579,10 @@ io.on("connection", socket => {
 
       if (
         !requester ||
-        (requester.role !== "host" &&
-         requester.role !== "teacher")
+        (
+          requester.role !== "host" &&
+          requester.role !== "teacher"
+        )
       ) {
         return callback?.({
           success: false,
@@ -613,9 +621,7 @@ io.on("connection", socket => {
     }
   );
 
-  /* =======================
-     LOCK SEAT
-  ======================= */
+  /* LOCK SEAT */
 
   socket.on(
     "toggle-seat-lock",
@@ -641,7 +647,9 @@ io.on("connection", socket => {
 
       const seat =
         room.seats.find(
-          s => s.number === Number(data?.seatNumber)
+          s =>
+            s.number ===
+            Number(data?.seatNumber)
         );
 
       if (!seat) return;
@@ -657,64 +665,64 @@ io.on("connection", socket => {
     }
   );
 
-  /* =======================
-     MIC
-  ======================= */
+  /* MIC */
 
-  socket.on("toggle-mic", callback => {
+  socket.on(
+    "toggle-mic",
+    callback => {
 
-    const room =
-      rooms.get(socket.data.roomId);
+      const room =
+        rooms.get(socket.data.roomId);
 
-    if (!room) return;
+      if (!room) return;
 
-    const user =
-      room.users.get(socket.id);
+      const user =
+        room.users.get(socket.id);
 
-    if (!user) return;
+      if (!user) return;
 
-    if (
-      !user.seat &&
-      user.role !== "host" &&
-      user.role !== "teacher"
-    ) {
-      return callback?.({
-        success: false,
-        message: "Seat malee mic hin banatu."
-      });
-    }
-
-    if (user.muted) {
-      return callback?.({
-        success: false,
-        message: "Mic mute godhameera."
-      });
-    }
-
-    user.micOn = !user.micOn;
-
-    if (user.seat) {
-      const seat =
-        room.seats.find(
-          s => s.number === user.seat
-        );
-
-      if (seat) {
-        seat.micOn = user.micOn;
+      if (
+        !user.seat &&
+        user.role !== "host" &&
+        user.role !== "teacher"
+      ) {
+        return callback?.({
+          success: false,
+          message: "Seat malee mic hin banatu."
+        });
       }
+
+      if (user.muted) {
+        return callback?.({
+          success: false,
+          message: "Mic mute godhameera."
+        });
+      }
+
+      user.micOn = !user.micOn;
+
+      if (user.seat) {
+
+        const seat =
+          room.seats.find(
+            s => s.number === user.seat
+          );
+
+        if (seat) {
+          seat.micOn = user.micOn;
+        }
+      }
+
+      callback?.({
+        success: true,
+        micOn: user.micOn
+      });
+
+      broadcastClassroom(room);
     }
+  );
 
-    callback?.({
-      success: true,
-      micOn: user.micOn
-    });
-
-    broadcastClassroom(room);
-  });
-
-  /* =======================
-     MUTE
-  ======================= */
+  /* MUTE */
 
   socket.on(
     "mute-user",
@@ -758,9 +766,8 @@ io.on("connection", socket => {
         }
       }
 
-      io.to(target.socketId).emit(
-        "force-mute"
-      );
+      io.to(target.socketId)
+        .emit("force-mute");
 
       callback?.({
         success: true
@@ -770,9 +777,7 @@ io.on("connection", socket => {
     }
   );
 
-  /* =======================
-     UNMUTE
-  ======================= */
+  /* UNMUTE */
 
   socket.on(
     "unmute-user",
@@ -803,9 +808,8 @@ io.on("connection", socket => {
 
       target.muted = false;
 
-      io.to(target.socketId).emit(
-        "unmuted-by-host"
-      );
+      io.to(target.socketId)
+        .emit("unmuted-by-host");
 
       callback?.({
         success: true
@@ -815,9 +819,7 @@ io.on("connection", socket => {
     }
   );
 
-  /* =======================
-     MAKE TEACHER
-  ======================= */
+  /* MAKE TEACHER */
 
   socket.on(
     "make-teacher",
@@ -849,7 +851,9 @@ io.on("connection", socket => {
       if (room.teacherId) {
 
         const oldTeacher =
-          room.users.get(room.teacherId);
+          room.users.get(
+            room.teacherId
+          );
 
         if (oldTeacher) {
           oldTeacher.role =
@@ -859,7 +863,9 @@ io.on("connection", socket => {
         }
       }
 
-      room.teacherId = target.socketId;
+      room.teacherId =
+        target.socketId;
+
       target.role = "teacher";
 
       callback?.({
@@ -870,52 +876,85 @@ io.on("connection", socket => {
     }
   );
 
-  /* =======================
-     RAISE HAND
-  ======================= */
+  /* RAISE / LOWER HAND */
 
-  socket.on("raise-hand", callback => {
+  socket.on(
+    "raise-hand",
+    callback => {
 
-    const room =
-      rooms.get(socket.data.roomId);
+      const room =
+        rooms.get(socket.data.roomId);
 
-    if (!room) return;
+      if (!room) return;
 
-    const user =
-      room.users.get(socket.id);
+      const user =
+        room.users.get(socket.id);
 
-    if (!user) return;
+      if (!user) return;
 
-    user.handRaised =
-      !user.handRaised;
+      user.handRaised =
+        !user.handRaised;
 
-    if (user.handRaised) {
+      if (user.handRaised) {
 
-      if (
-        !room.raisedHands.includes(socket.id)
-      ) {
-        room.raisedHands.push(socket.id);
+        if (
+          !room.raisedHands.includes(
+            socket.id
+          )
+        ) {
+          room.raisedHands.push(
+            socket.id
+          );
+        }
+
+      } else {
+
+        room.raisedHands =
+          room.raisedHands.filter(
+            id => id !== socket.id
+          );
       }
 
-    } else {
+      callback?.({
+        success: true,
+        handRaised:
+          user.handRaised
+      });
+
+      broadcastClassroom(room);
+    }
+  );
+
+  socket.on(
+    "lower-hand",
+    callback => {
+
+      const room =
+        rooms.get(socket.data.roomId);
+
+      if (!room) return;
+
+      const user =
+        room.users.get(socket.id);
+
+      if (!user) return;
+
+      user.handRaised = false;
 
       room.raisedHands =
         room.raisedHands.filter(
           id => id !== socket.id
         );
+
+      callback?.({
+        success: true
+      });
+
+      broadcastClassroom(room);
     }
+  );
 
-    callback?.({
-      success: true,
-      handRaised: user.handRaised
-    });
-
-    broadcastClassroom(room);
-  });
-
-  /* =======================
-     CHAT
-  ======================= */
+  /* CHAT */
 
   socket.on(
     "chat-message",
@@ -952,70 +991,55 @@ io.on("connection", socket => {
         room.messages.shift();
       }
 
-      io.to(room.id).emit(
-        "chat-message",
-        message
-      );
+      io.to(room.id)
+        .emit("chat-message", message);
     }
   );
 
-  /* =======================
-     TYPING
-  ======================= */
+  /* TYPING */
 
-  socket.on("typing", data => {
+  socket.on(
+    "typing",
+    data => {
 
-    const room =
-      rooms.get(socket.data.roomId);
+      const room =
+        rooms.get(socket.data.roomId);
 
-    if (!room) return;
+      if (!room) return;
 
-    socket.to(room.id).emit(
-      "typing",
-      {
-        username:
-          data?.username || "User"
-      }
-    );
-  });
+      socket.to(room.id)
+        .emit("typing", {
+          username:
+            data?.username || "User"
+        });
+    }
+  );
 
-  /* =======================
-     WEBRTC OFFER
-  ======================= */
+  /* =========================
+     WEBRTC
+  ========================= */
 
   socket.on("offer", data => {
 
     if (!data?.target) return;
 
-    io.to(data.target).emit(
-      "offer",
-      {
+    io.to(data.target)
+      .emit("offer", {
         offer: data.offer,
         sender: socket.id
-      }
-    );
+      });
   });
-
-  /* =======================
-     WEBRTC ANSWER
-  ======================= */
 
   socket.on("answer", data => {
 
     if (!data?.target) return;
 
-    io.to(data.target).emit(
-      "answer",
-      {
+    io.to(data.target)
+      .emit("answer", {
         answer: data.answer,
         sender: socket.id
-      }
-    );
+      });
   });
-
-  /* =======================
-     ICE
-  ======================= */
 
   socket.on(
     "ice-candidate",
@@ -1023,19 +1047,149 @@ io.on("connection", socket => {
 
       if (!data?.target) return;
 
-      io.to(data.target).emit(
-        "ice-candidate",
-        {
+      io.to(data.target)
+        .emit("ice-candidate", {
           candidate: data.candidate,
           sender: socket.id
-        }
-      );
+        });
     }
   );
 
-  /* =======================
-     REMOVE USER
-  ======================= */
+  /* CALL START */
+
+  socket.on(
+    "call-start",
+    data => {
+
+      const room =
+        rooms.get(socket.data.roomId);
+
+      if (!room) return;
+
+      socket.to(room.id)
+        .emit("call-started", {
+          caller: socket.id,
+          type:
+            data?.type || "video"
+        });
+    }
+  );
+
+  socket.on(
+    "call-end",
+    () => {
+
+      const room =
+        rooms.get(socket.data.roomId);
+
+      if (!room) return;
+
+      socket.to(room.id)
+        .emit("call-ended", {
+          caller: socket.id
+        });
+    }
+  );
+
+  /* =========================
+     VOICE CLUB
+  ========================= */
+
+  socket.on(
+    "voice-club-join",
+    callback => {
+
+      const room =
+        rooms.get(socket.data.roomId);
+
+      if (!room) return;
+
+      room.voiceClubUsers.add(
+        socket.id
+      );
+
+      io.to(room.id).emit(
+        "voice-club-state",
+        Array.from(
+          room.voiceClubUsers
+        )
+      );
+
+      callback?.({
+        success: true
+      });
+    }
+  );
+
+  socket.on(
+    "voice-club-leave",
+    callback => {
+
+      const room =
+        rooms.get(socket.data.roomId);
+
+      if (!room) return;
+
+      room.voiceClubUsers.delete(
+        socket.id
+      );
+
+      io.to(room.id).emit(
+        "voice-club-state",
+        Array.from(
+          room.voiceClubUsers
+        )
+      );
+
+      callback?.({
+        success: true
+      });
+    }
+  );
+
+  /* =========================
+     GIFTS
+  ========================= */
+
+  socket.on(
+    "sendGift",
+    data => {
+
+      const room =
+        rooms.get(socket.data.roomId);
+
+      if (!room) return;
+
+      const user =
+        room.users.get(socket.id);
+
+      if (!user) return;
+
+      const gift = {
+        id: Date.now(),
+        from: user.username,
+        type:
+          data?.type || "gift",
+        amount:
+          Number(data?.amount) || 1,
+        time: new Date().toISOString()
+      };
+
+      room.gifts.push(gift);
+
+      if (room.gifts.length > 100) {
+        room.gifts.shift();
+      }
+
+      io.to(room.id)
+        .emit(
+          "giftReceived",
+          gift
+        );
+    }
+  );
+
+  /* REMOVE USER */
 
   socket.on(
     "remove-user",
@@ -1064,9 +1218,8 @@ io.on("connection", socket => {
 
       if (!target) return;
 
-      io.to(target.socketId).emit(
-        "removed-from-room"
-      );
+      io.to(target.socketId)
+        .emit("removed-from-room");
 
       const targetSocket =
         io.sockets.sockets.get(
@@ -1074,8 +1227,11 @@ io.on("connection", socket => {
         );
 
       if (targetSocket) {
+
         targetSocket.leave(room.id);
-        targetSocket.data.roomId = null;
+
+        targetSocket.data.roomId =
+          null;
       }
 
       if (target.seat) {
@@ -1086,6 +1242,7 @@ io.on("connection", socket => {
           );
 
         if (seat) {
+
           seat.socketId = null;
           seat.username = null;
           seat.micOn = false;
@@ -1101,6 +1258,10 @@ io.on("connection", socket => {
           id => id !== target.socketId
         );
 
+      room.voiceClubUsers.delete(
+        target.socketId
+      );
+
       broadcastClassroom(room);
 
       callback?.({
@@ -1109,129 +1270,101 @@ io.on("connection", socket => {
     }
   );
 
-  /* =======================
-     CALL START
-  ======================= */
+  /* DISCONNECT */
 
   socket.on(
-    "call-start",
-    data => {
+    "disconnect",
+    () => {
+
+      console.log(
+        "🔴 Disconnected:",
+        socket.id
+      );
+
+      const roomId =
+        socket.data.roomId;
+
+      if (!roomId) return;
 
       const room =
-        rooms.get(socket.data.roomId);
+        rooms.get(roomId);
 
       if (!room) return;
 
-      socket.to(room.id).emit(
-        "call-started",
+      const user =
+        room.users.get(socket.id);
+
+      if (!user) return;
+
+      if (user.seat) {
+
+        const seat =
+          room.seats.find(
+            s => s.number === user.seat
+          );
+
+        if (seat) {
+
+          seat.socketId = null;
+          seat.username = null;
+          seat.micOn = false;
+        }
+      }
+
+      room.users.delete(
+        socket.id
+      );
+
+      room.raisedHands =
+        room.raisedHands.filter(
+          id => id !== socket.id
+        );
+
+      room.voiceClubUsers.delete(
+        socket.id
+      );
+
+      if (
+        room.teacherId ===
+        socket.id
+      ) {
+        room.teacherId = null;
+      }
+
+      if (
+        room.hostId ===
+        socket.id
+      ) {
+
+        const nextUser =
+          room.users.values()
+            .next().value;
+
+        if (nextUser) {
+
+          room.hostId =
+            nextUser.socketId;
+
+          nextUser.role = "host";
+
+        } else {
+
+          rooms.delete(roomId);
+
+          return;
+        }
+      }
+
+      broadcastClassroom(room);
+
+      io.to(room.id).emit(
+        "user-left",
         {
-          caller: socket.id,
-          type: data?.type || "video"
+          socketId: socket.id
         }
       );
     }
   );
-
-  /* =======================
-     CALL END
-  ======================= */
-
-  socket.on("call-end", () => {
-
-    const room =
-      rooms.get(socket.data.roomId);
-
-    if (!room) return;
-
-    socket.to(room.id).emit(
-      "call-ended",
-      {
-        caller: socket.id
-      }
-    );
-  });
-
-  /* =======================
-     DISCONNECT
-  ======================= */
-
-  socket.on("disconnect", () => {
-
-    const roomId =
-      socket.data.roomId;
-
-    if (!roomId) return;
-
-    const room =
-      rooms.get(roomId);
-
-    if (!room) return;
-
-    const user =
-      room.users.get(socket.id);
-
-    if (!user) return;
-
-    /* Release seat */
-
-    if (user.seat) {
-
-      const seat =
-        room.seats.find(
-          s => s.number === user.seat
-        );
-
-      if (seat) {
-        seat.socketId = null;
-        seat.username = null;
-        seat.micOn = false;
-      }
-    }
-
-    room.users.delete(socket.id);
-
-    room.raisedHands =
-      room.raisedHands.filter(
-        id => id !== socket.id
-      );
-
-    /* Teacher leaves */
-
-    if (room.teacherId === socket.id) {
-      room.teacherId = null;
-    }
-
-    /* Host leaves */
-
-    if (room.hostId === socket.id) {
-
-      const nextUser =
-        room.users.values().next().value;
-
-      if (nextUser) {
-
-        room.hostId =
-          nextUser.socketId;
-
-        nextUser.role = "host";
-
-      } else {
-
-        rooms.delete(roomId);
-
-        return;
-      }
-    }
-
-    broadcastClassroom(room);
-
-    io.to(room.id).emit(
-      "user-left",
-      {
-        socketId: socket.id
-      }
-    );
-  });
 });
 
 /* =========================
@@ -1240,13 +1373,30 @@ io.on("connection", socket => {
 
 async function startServer() {
 
-  await initDatabase();
+  try {
 
-  server.listen(PORT, () => {
-    console.log(
-      `WALIIN JM server running on port ${PORT}`
+    await initDatabase();
+
+    server.listen(
+      PORT,
+      "0.0.0.0",
+      () => {
+
+        console.log(
+          `🚀 WALIIN JM running on port ${PORT}`
+        );
+      }
     );
-  });
+
+  } catch (error) {
+
+    console.error(
+      "❌ SERVER START FAILED:",
+      error.message
+    );
+
+    process.exit(1);
+  }
 }
 
 startServer();
