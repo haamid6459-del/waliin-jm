@@ -1,20 +1,15 @@
 <!DOCTYPE html>
 <html lang="om">
 <head>
-
 <meta charset="UTF-8">
-<meta name="viewport"
- content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1">
 
 <title>Waliin-JM</title>
 
 <script src="/socket.io/socket.io.js"></script>
 
 <style>
-
-*{
- box-sizing:border-box;
-}
+*{box-sizing:border-box}
 
 body{
  margin:0;
@@ -169,16 +164,85 @@ video{
  opacity:.7;
 }
 
+/* GIFT */
+
+.gift-grid{
+ display:grid;
+ grid-template-columns:
+ repeat(5,1fr);
+ gap:6px;
+}
+
+.gift-btn{
+ font-size:25px;
+ padding:12px 5px;
+ background:#176b45;
+}
+
+#giftArea{
+ min-height:10px;
+}
+
+.gift-item{
+ padding:10px;
+ margin:6px 0;
+ border-radius:10px;
+ background:#fff3cd;
+ animation:giftIn .3s ease;
+}
+
+.dark .gift-item{
+ background:#3b321c;
+}
+
+@keyframes giftIn{
+ from{
+  transform:scale(.7);
+  opacity:0;
+ }
+ to{
+  transform:scale(1);
+  opacity:1;
+ }
+}
+
+/* VOICE CLUB */
+
+.voice-buttons{
+ display:grid;
+ grid-template-columns:
+ repeat(2,1fr);
+ gap:7px;
+}
+
+.voice-status{
+ padding:12px;
+ border-radius:10px;
+ background:#e7f4ed;
+ margin-bottom:10px;
+}
+
+.dark .voice-status{
+ background:#303030;
+}
+
 @media(max-width:600px){
 
  .controls{
    grid-template-columns:1fr;
  }
 
+ .gift-grid{
+   grid-template-columns:
+   repeat(3,1fr);
+ }
+
+ .voice-buttons{
+   grid-template-columns:1fr;
+ }
+
 }
-
 </style>
-
 </head>
 
 <body>
@@ -225,8 +289,6 @@ video{
 
 </div>
 
-<!-- LOGIN -->
-
 <div id="loginForm">
 
 <input
@@ -244,8 +306,6 @@ video{
 </button>
 
 </div>
-
-<!-- SIGNUP -->
 
 <div id="signupForm"
  class="hidden">
@@ -279,8 +339,7 @@ video{
 
 <!-- APP -->
 
-<div id="app"
- class="hidden">
+<div id="app" class="hidden">
 
 <div class="card">
 
@@ -334,8 +393,7 @@ video{
 🚪 Room Seeni
 </button>
 
-<p id="roomError"
- class="error"></p>
+<p id="roomError" class="error"></p>
 
 </div>
 
@@ -344,19 +402,22 @@ video{
 
 <!-- ROOM -->
 
-<div id="room"
- class="hidden">
+<div id="room" class="hidden">
 
 <div class="card">
 
 <h2>
-Room:
+🏠 Room:
 <span id="roomTitle"></span>
 </h2>
 
 <p>
 👥 Namoota:
-<span id="count">0</span>/10
+<span id="count">0</span>
+</p>
+
+<p class="small">
+♾️ Roomichi daangaa namootaa hin qabu.
 </p>
 
 <button onclick="copyRoom()">
@@ -370,9 +431,11 @@ Room:
 </div>
 
 
+<!-- VIDEO -->
+
 <div class="card">
 
-<h3>📹 Video Call</h3>
+<h3>📹 Video / Voice Call</h3>
 
 <div class="videos">
 
@@ -401,6 +464,10 @@ Room:
 🖥️ Screen
 </button>
 
+<button onclick="startVideoCall()">
+📞 Call
+</button>
+
 <button
  class="danger"
  onclick="leaveRoom()">
@@ -416,6 +483,46 @@ Room:
 </div>
 
 
+<!-- VOICE CLUB -->
+
+<div class="card">
+
+<h3>🎙️ Voice Club</h3>
+
+<div class="voice-status">
+🎙️ Voice Club:
+<span id="voiceStatus">
+Hin jalqabne
+</span>
+</div>
+
+<div class="voice-buttons">
+
+<button onclick="joinVoiceClub()">
+🎙️ Voice Club Seeni
+</button>
+
+<button onclick="leaveVoiceClub()">
+🚪 Voice Club Ba'i
+</button>
+
+<button onclick="raiseHand()">
+✋ Harka Kaasi
+</button>
+
+<button onclick="lowerHand()">
+👇 Harka Buusi
+</button>
+
+</div>
+
+<p id="handStatus" class="small"></p>
+
+</div>
+
+
+<!-- PARTICIPANTS -->
+
 <div class="card">
 
 <h3>👥 Participants</h3>
@@ -425,17 +532,15 @@ Room:
 </div>
 
 
+<!-- CHAT -->
+
 <div class="card">
 
 <h3>💬 Chat</h3>
 
-<div id="chat"
- class="chat">
-</div>
+<div id="chat" class="chat"></div>
 
-<p id="typing"
- class="small">
-</p>
+<p id="typing" class="small"></p>
 
 <input
  id="message"
@@ -447,6 +552,58 @@ Room:
 
 </div>
 
+
+<!-- GIFTS -->
+
+<div class="card">
+
+<h3>🎁 Gift</h3>
+
+<p>
+🪙 Coins:
+<strong id="coinBalance">1000</strong>
+</p>
+
+<div class="gift-grid">
+
+<button
+ class="gift-btn"
+ onclick="sendGift('heart')">
+ ❤️
+</button>
+
+<button
+ class="gift-btn"
+ onclick="sendGift('flower')">
+ 🌹
+</button>
+
+<button
+ class="gift-btn"
+ onclick="sendGift('star')">
+ ⭐
+</button>
+
+<button
+ class="gift-btn"
+ onclick="sendGift('crown')">
+ 👑
+</button>
+
+<button
+ class="gift-btn"
+ onclick="sendGift('diamond')">
+ 💎
+</button>
+
+</div>
+
+<div id="giftArea"></div>
+
+</div>
+
+
+<!-- SETTINGS -->
 
 <div class="card">
 
@@ -460,7 +617,7 @@ Room:
 👤 Maqaa Jijjiiri
 </button>
 
-<button onclick="alert('Waliin-JM v3.0')">
+<button onclick="alert('Waliin-JM v4.0')">
 ℹ️ About
 </button>
 
@@ -485,20 +642,25 @@ let currentUser =
 let username = "";
 let roomId = "";
 let localStream = null;
-
 let peers = {};
+let voiceClubActive = false;
+let coins = 1000;
 
 
-// AUTH START
+/* AUTH START */
 
 if(currentUser){
-
  showApp();
 
+ if(currentUser.coins !== undefined){
+  coins = currentUser.coins;
+ }
+
+ updateCoins();
 }
 
 
-// LOGIN TAB
+/* LOGIN TAB */
 
 function showLogin(){
 
@@ -513,11 +675,10 @@ function showLogin(){
 
  document.getElementById("signupTab")
  .classList.remove("active");
-
 }
 
 
-// SIGNUP TAB
+/* SIGNUP TAB */
 
 function showSignup(){
 
@@ -532,11 +693,10 @@ function showSignup(){
 
  document.getElementById("signupTab")
  .classList.add("active");
-
 }
 
 
-// SIGNUP
+/* SIGNUP */
 
 async function signup(){
 
@@ -565,46 +725,56 @@ async function signup(){
   return;
  }
 
- const response =
- await fetch("/api/signup",{
+ try{
 
-  method:"POST",
+  const response =
+   await fetch("/api/signup",{
 
-  headers:{
-   "Content-Type":
-   "application/json"
-  },
+    method:"POST",
 
-  body:JSON.stringify({
-   username,
-   email,
-   password
-  })
+    headers:{
+     "Content-Type":
+     "application/json"
+    },
 
- });
+    body:JSON.stringify({
+     username,
+     email,
+     password
+    })
 
- const data =
- await response.json();
+   });
 
- showAuthMessage(
-  data.message,
-  data.success
- );
+  const data =
+   await response.json();
 
- if(data.success){
+  showAuthMessage(
+   data.message,
+   data.success
+  );
 
-  showLogin();
+  if(data.success){
 
-  document.getElementById(
-   "loginEmail"
-  ).value=email;
+   showLogin();
+
+   document.getElementById(
+    "loginEmail"
+   ).value=email;
+
+  }
+
+ }catch(error){
+
+  showAuthMessage(
+   "Server waliin wal qunnamuun hin danda'amne.",
+   false
+  );
 
  }
-
 }
 
 
-// LOGIN
+/* LOGIN */
 
 async function login(){
 
@@ -628,49 +798,63 @@ async function login(){
   return;
  }
 
- const response =
- await fetch("/api/login",{
+ try{
 
-  method:"POST",
+  const response =
+   await fetch("/api/login",{
 
-  headers:{
-   "Content-Type":
-   "application/json"
-  },
+    method:"POST",
 
-  body:JSON.stringify({
-   email,
-   password
-  })
+    headers:{
+     "Content-Type":
+     "application/json"
+    },
 
- });
+    body:JSON.stringify({
+     email,
+     password
+    })
 
- const data =
- await response.json();
+   });
 
- if(!data.success){
+  const data =
+   await response.json();
+
+  if(!data.success){
+
+   showAuthMessage(
+    data.message,
+    false
+   );
+
+   return;
+  }
+
+  currentUser=data.user;
+
+  if(currentUser.coins !== undefined){
+   coins=currentUser.coins;
+  }
+
+  localStorage.setItem(
+   "waliinUser",
+   JSON.stringify(currentUser)
+  );
+
+  showApp();
+
+ }catch(error){
 
   showAuthMessage(
-   data.message,
+   "Server waliin wal qunnamuun hin danda'amne.",
    false
   );
 
-  return;
  }
-
- currentUser=data.user;
-
- localStorage.setItem(
-  "waliinUser",
-  JSON.stringify(currentUser)
- );
-
- showApp();
-
 }
 
 
-// SHOW APP
+/* SHOW APP */
 
 function showApp(){
 
@@ -690,10 +874,11 @@ function showApp(){
  ).value =
  currentUser.username;
 
+ updateCoins();
 }
 
 
-// MESSAGE
+/* MESSAGE */
 
 function showAuthMessage(
  message,
@@ -709,24 +894,32 @@ function showAuthMessage(
 
  box.className =
  success ? "success" : "error";
-
 }
 
 
-// LOGOUT
+/* LOGOUT */
 
 function logout(){
+
+ if(localStream){
+
+  localStream
+  .getTracks()
+  .forEach(track=>{
+   track.stop();
+  });
+
+ }
 
  localStorage.removeItem(
   "waliinUser"
  );
 
  location.reload();
-
 }
 
 
-// CREATE ROOM
+/* CREATE ROOM */
 
 function createRoom(){
 
@@ -751,14 +944,14 @@ function createRoom(){
   "create-room",
   {
    username,
-   password
+   password,
+   type:"video"
   }
  );
-
 }
 
 
-// JOIN ROOM
+/* JOIN ROOM */
 
 function joinRoom(){
 
@@ -795,11 +988,10 @@ function joinRoom(){
    password
   }
  );
-
 }
 
 
-// CREATED
+/* CREATED */
 
 socket.on(
  "room-created",
@@ -810,12 +1002,11 @@ socket.on(
   openRoom();
 
   await startMedia();
-
  }
 );
 
 
-// JOINED
+/* JOINED */
 
 socket.on(
  "room-joined",
@@ -831,7 +1022,7 @@ socket.on(
 );
 
 
-// ERROR
+/* ERROR */
 
 socket.on(
  "room-error",
@@ -842,12 +1033,11 @@ socket.on(
   ).innerText=msg;
 
   alert(msg);
-
  }
 );
 
 
-// OPEN ROOM
+/* OPEN ROOM */
 
 function openRoom(){
 
@@ -862,11 +1052,10 @@ function openRoom(){
  document.getElementById(
   "roomTitle"
  ).innerText=roomId;
-
 }
 
 
-// MEDIA
+/* MEDIA */
 
 async function startMedia(){
 
@@ -886,15 +1075,14 @@ async function startMedia(){
  }catch(error){
 
   alert(
-   "Camera/Mic hin argamne."
+   "Camera/Mic hin argamne. Permission kenni."
   );
 
  }
-
 }
 
 
-// MIC
+/* MIC */
 
 function toggleMic(){
 
@@ -906,11 +1094,10 @@ function toggleMic(){
   track.enabled =
    !track.enabled;
  });
-
 }
 
 
-// CAMERA
+/* CAMERA */
 
 function toggleCamera(){
 
@@ -922,11 +1109,10 @@ function toggleCamera(){
   track.enabled =
    !track.enabled;
  });
-
 }
 
 
-// SCREEN
+/* SCREEN */
 
 async function shareScreen(){
 
@@ -947,7 +1133,29 @@ async function shareScreen(){
 }
 
 
-// CHAT
+/* START VIDEO CALL */
+
+function startVideoCall(){
+
+ const users =
+  document.querySelectorAll(
+   ".participant"
+  );
+
+ if(!roomId){
+
+  alert("Dura room seeni.");
+
+  return;
+ }
+
+ alert(
+  "Call jalqabameera. Namoota room keessa jiran waliin video call qindeessaa jira."
+ );
+}
+
+
+/* CHAT */
 
 function sendMessage(){
 
@@ -967,7 +1175,6 @@ function sendMessage(){
  );
 
  input.value="";
-
 }
 
 
@@ -1002,7 +1209,7 @@ socket.on(
 );
 
 
-// TYPING
+/* TYPING */
 
 document
 .getElementById("message")
@@ -1035,12 +1242,11 @@ socket.on(
    setTimeout(()=>{
     box.innerText="";
    },1500);
-
  }
 );
 
 
-// PARTICIPANTS
+/* PARTICIPANTS */
 
 socket.on(
  "participants",
@@ -1077,29 +1283,16 @@ socket.on(
 
    html+="</span>";
 
-   if(
-    currentUser &&
-    user.socketId !== socket.id
-   ){
-
-    html+=
-     "<span class='small'>"+
-     "User"+
-     "</span>";
-
-   }
-
    div.innerHTML=html;
 
    box.appendChild(div);
 
   });
-
  }
 );
 
 
-// USER JOINED
+/* USER JOINED */
 
 socket.on(
  "user-joined",
@@ -1113,7 +1306,7 @@ socket.on(
 );
 
 
-// PEER
+/* PEER */
 
 function makePeer(id){
 
@@ -1144,7 +1337,6 @@ function makePeer(id){
     localStream
    );
   });
-
  }
 
  pc.onicecandidate =
@@ -1160,9 +1352,7 @@ function makePeer(id){
        event.candidate
      }
     );
-
    }
-
   };
 
  pc.ontrack =
@@ -1191,20 +1381,17 @@ function makePeer(id){
      "remoteVideos"
     )
     .appendChild(video);
-
    }
 
    video.srcObject =
     event.streams[0];
-
   };
 
  return pc;
-
 }
 
 
-// OFFER
+/* OFFER */
 
 async function createOffer(id){
 
@@ -1225,11 +1412,10 @@ async function createOffer(id){
    offer
   }
  );
-
 }
 
 
-// RECEIVE OFFER
+/* RECEIVE OFFER */
 
 socket.on(
  "offer",
@@ -1258,12 +1444,11 @@ socket.on(
     answer
    }
   );
-
  }
 );
 
 
-// ANSWER
+/* ANSWER */
 
 socket.on(
  "answer",
@@ -1279,14 +1464,12 @@ socket.on(
      data.answer
     )
    );
-
   }
-
  }
 );
 
 
-// ICE
+/* ICE */
 
 socket.on(
  "ice-candidate",
@@ -1306,12 +1489,11 @@ socket.on(
    );
 
   }catch(error){}
-
  }
 );
 
 
-// USER LEFT
+/* USER LEFT */
 
 socket.on(
  "user-left",
@@ -1330,14 +1512,12 @@ socket.on(
    peers[id].close();
 
    delete peers[id];
-
   }
-
  }
 );
 
 
-// FORCE MUTE
+/* FORCE MUTE */
 
 socket.on(
  "force-mute",
@@ -1354,12 +1534,11 @@ socket.on(
   alert(
    "Adminiin microphone kee cufe."
   );
-
  }
 );
 
 
-// REMOVED
+/* REMOVED */
 
 socket.on(
  "removed-from-room",
@@ -1370,12 +1549,243 @@ socket.on(
   );
 
   location.reload();
+ }
+);
+
+
+/* =========================
+   🎁 GIFT SYSTEM
+   ========================= */
+
+const giftPrices = {
+
+ heart:10,
+ flower:20,
+ star:50,
+ crown:100,
+ diamond:500
+
+};
+
+
+function updateCoins(){
+
+ const box =
+  document.getElementById(
+   "coinBalance"
+  );
+
+ if(box){
+  box.innerText=coins;
+ }
+}
+
+
+function sendGift(gift){
+
+ if(!roomId){
+
+  alert(
+   "Gift erguuf dura room seeni."
+  );
+
+  return;
+ }
+
+ const price =
+  giftPrices[gift] || 10;
+
+ if(coins < price){
+
+  alert(
+   "Coins gahaa hin qabdu."
+  );
+
+  return;
+ }
+
+ coins -= price;
+
+ updateCoins();
+
+ socket.emit(
+  "sendGift",
+  {
+   gift
+  }
+ );
+}
+
+
+socket.on(
+ "giftReceived",
+ data=>{
+
+  const area =
+   document.getElementById(
+    "giftArea"
+   );
+
+  if(!area)return;
+
+  const item =
+   document.createElement(
+    "div"
+   );
+
+  item.className=
+   "gift-item";
+
+  item.innerHTML =
+   "🎁 <b>"+
+   safe(data.sender)+
+   "</b> Gift "+
+   safe(data.emoji)+
+   " erge — 🪙 "+
+   data.coins;
+
+  area.appendChild(item);
+
+  setTimeout(
+   ()=>{
+    item.remove();
+   },
+   7000
+  );
 
  }
 );
 
 
-// COPY ROOM
+/* =========================
+   🎙️ VOICE CLUB
+   ========================= */
+
+function joinVoiceClub(){
+
+ if(!roomId){
+
+  alert(
+   "Dura room seeni."
+  );
+
+  return;
+ }
+
+ voiceClubActive=true;
+
+ socket.emit(
+  "voice-club-join",
+  {
+   roomId,
+   username
+  }
+ );
+
+ document.getElementById(
+  "voiceStatus"
+ ).innerText =
+ "Hojjechaa jira 🎙️";
+}
+
+
+function leaveVoiceClub(){
+
+ voiceClubActive=false;
+
+ document.getElementById(
+  "voiceStatus"
+ ).innerText =
+ "Hin jalqabne";
+
+ document.getElementById(
+  "handStatus"
+ ).innerText="";
+
+}
+
+
+socket.on(
+ "voice-club-user-joined",
+ data=>{
+
+  const box =
+   document.getElementById(
+    "voiceStatus"
+   );
+
+  if(box){
+
+   box.innerText =
+    data.username+
+    " Voice Club seene 🎙️";
+  }
+ }
+);
+
+
+/* RAISE HAND */
+
+function raiseHand(){
+
+ if(!voiceClubActive){
+
+  alert(
+   "Dura Voice Club seeni."
+  );
+
+  return;
+ }
+
+ socket.emit(
+  "raise-hand"
+ );
+}
+
+
+function lowerHand(){
+
+ socket.emit(
+  "lower-hand"
+ );
+
+ document.getElementById(
+  "handStatus"
+ ).innerText="";
+}
+
+
+socket.on(
+ "hand-raised",
+ data=>{
+
+  document.getElementById(
+   "handStatus"
+  ).innerText =
+   "✋ "+
+   data.username+
+   " harka kaaseera.";
+ }
+);
+
+
+socket.on(
+ "hand-lowered",
+ data=>{
+
+  if(
+   data.socketId === socket.id
+  ){
+
+   document.getElementById(
+    "handStatus"
+   ).innerText="";
+  }
+ }
+);
+
+
+/* COPY ROOM */
 
 function copyRoom(){
 
@@ -1385,11 +1795,10 @@ function copyRoom(){
  alert(
   "Room ID copied."
  );
-
 }
 
 
-// SHARE ROOM
+/* SHARE ROOM */
 
 async function shareRoom(){
 
@@ -1398,9 +1807,7 @@ async function shareRoom(){
   "?room="+
   roomId;
 
- if(
-  navigator.share
- ){
+ if(navigator.share){
 
   try{
 
@@ -1421,13 +1828,11 @@ async function shareRoom(){
   alert(
    "Room link copied."
   );
-
  }
-
 }
 
 
-// DARK MODE
+/* DARK MODE */
 
 function toggleDark(){
 
@@ -1440,8 +1845,8 @@ function toggleDark(){
   document.body.classList
   .contains("dark")
  );
-
 }
+
 
 if(
  localStorage.getItem("dark")
@@ -1451,11 +1856,10 @@ if(
  document.body
  .classList
  .add("dark");
-
 }
 
 
-// CHANGE NAME
+/* CHANGE NAME */
 
 function changeName(){
 
@@ -1476,13 +1880,11 @@ function changeName(){
   document.getElementById(
    "profileName"
   ).innerText=username;
-
  }
-
 }
 
 
-// LEAVE
+/* LEAVE */
 
 function leaveRoom(){
 
@@ -1493,15 +1895,20 @@ function leaveRoom(){
   .forEach(
    track=>track.stop()
   );
-
  }
 
- location.reload();
+ Object.values(peers)
+ .forEach(
+  pc=>pc.close()
+ );
 
+ peers={};
+
+ location.reload();
 }
 
 
-// SECURITY
+/* SECURITY */
 
 function safe(text){
 
@@ -1513,7 +1920,6 @@ function safe(text){
  div.textContent=text;
 
  return div.innerHTML;
-
 }
 
 </script>
