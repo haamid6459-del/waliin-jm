@@ -1,6 +1,9 @@
 <!DOCTYPE html>
 <html lang="om">
-<head>
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#176b45">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes"><head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 
@@ -1922,6 +1925,12 @@ function safe(text){
  return div.innerHTML;
 }
 
+</script><script>
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("/sw.js")
+    .then(() => console.log("Waliin-JM PWA ready"))
+    .catch(err => console.error("PWA error:", err));
+}
 </script>
 
 </body>
