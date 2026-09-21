@@ -1,9 +1,10 @@
 const express = require("express");
 const http = require("http");
-const { Server } = require("socket.io");
 const path = require("path");
 const bcrypt = require("bcryptjs");
-const { Pool } = require("pg");
+const cors = require("cors");
+const { Server } = require("socket.io");
+const { createClient } = require("redis");
 
 const app = express();
 const server = http.createServer(app);
@@ -17,112 +18,189 @@ const io = new Server(server, {
 
 const PORT = process.env.PORT || 3000;
 
-/* =========================
-   DATABASE
-========================= */
-
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: process.env.DATABASE_URL
-    ? { rejectUnauthorized: false }
-    : false
-});
-
+app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
 
 /* =========================
-   MEMORY
+   REDIS
 ========================= */
 
-const rooms = new Map();
+const REDIS_URL = process.env.REDIS_URL;
 
-/* =========================
-   DATABASE SETUP
-========================= */
+let redis = null;
 
-async function initDatabase() {
-  if (!process.env.DATABASE_URL) {
-    console.log("DATABASE_URL hin argamne.");
+async function connectRedis() {
+  if (!REDIS_URL) {
+    console.log("REDIS_URL hin argamne.");
     return;
   }
 
   try {
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS users (
-        id SERIAL PRIMARY KEY,
-        username VARCHAR(50) NOT NULL,
-        email VARCHAR(255) UNIQUE NOT NULL,
-        password_hash TEXT NOT NULL,
-        bio TEXT DEFAULT '',
-        avatar TEXT DEFAULT '',
-        status TEXT DEFAULT '',
-        coins INTEGER DEFAULT 1000,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
+    redis = createClient({
+      url: REDIS_URL
+    });
 
-    console.log("PostgreSQL database qophaa'eera.");
+    redis.on("error", (err) => {
+      console.error("Redis Error:", err.message);
+    });
+
+    await redis.connect();
+
+    console.log("Redis connected successfully.");
   } catch (error) {
-    console.error("Database error:", error.message);
+    console.error("Redis connection failed:", error.message);
   }
 }
 
+async function saveUser(user) {
+  if (!redis) return;
+
+  await redis.set(
+    `user:${user.email}`,
+    JSON.stringify(user)
+  );
+}
+
+async function getUser(email) {
+  if (!redis) return null;
+
+  const data = await redis.get(`user:${email}`);
+
+  if (!data) return null;
+
+  return JSON.parse(data);
+}
+
 /* =========================
-   SIGN UP
+   ROOMS
+========================= */
+
+const rooms = new Map();
+
+function createSeats(count) {
+  return Array.from({ length: count }, (_, index) => ({
+    number: index + 1,
+    socketId: null,
+    username: null,
+    locked: false,
+    micOn: false
+  }));
+}
+
+function getParticipants(room) {
+  return Array.from(room.users.values()).map((user) => ({
+    socketId: user.socketId,
+    username: user.username,
+    role: user.role,
+    seat: user.seat,
+    micOn: user.micOn,
+    muted: user.muted,
+    handRaised: user.handRaised
+  }));
+}
+
+function getClassroomState(room) {
+  return {
+    roomId: room.id,
+    type: room.type,
+    seatCount: room.seatCount,
+    seats: room.seats,
+    hostId: room.hostId,
+    teacherId: room.teacherId,
+    participants: getParticipants(room),
+    raisedHands: room.raisedHands
+  };
+}
+
+function broadcastClassroom(room) {
+  io.to(room.id).emit(
+    "classroom-state",
+    getClassroomState(room)
+  );
+}
+
+/* =========================
+   API
+========================= */
+
+app.get("/api/status", (req, res) => {
+  res.json({
+    ok: true,
+    app: "WALIIN JM",
+    database: redis ? "Redis connected" : "Redis not connected",
+    classroom: true,
+    seats: [10, 15],
+    unlimitedAudience: true
+  });
+});
+
+/* =========================
+   SIGNUP
 ========================= */
 
 app.post("/api/signup", async (req, res) => {
   try {
-    const { username, email, password } = req.body;
+    const {
+      username,
+      email,
+      password
+    } = req.body;
 
     if (!username || !email || !password) {
-      return res.json({
+      return res.status(400).json({
         success: false,
         message: "Username, email fi password guuti."
       });
     }
 
-    if (password.length < 6) {
-      return res.json({
+    if (!redis) {
+      return res.status(500).json({
         success: false,
-        message: "Password yoo xiqqaate qubee 6 qabaachuu qaba."
+        message: "Database connection hin jiru."
       });
     }
 
-    const cleanUsername = String(username).trim();
-    const emailKey = String(email).toLowerCase().trim();
+    const existingUser = await getUser(email);
 
-    const passwordHash = await bcrypt.hash(password, 12);
+    if (existingUser) {
+      return res.status(409).json({
+        success: false,
+        message: "Email kun duraan fayyadameera."
+      });
+    }
 
-    await pool.query(
-      `
-      INSERT INTO users
-      (username, email, password_hash)
-      VALUES ($1, $2, $3)
-      `,
-      [cleanUsername, emailKey, passwordHash]
-    );
+    const passwordHash = await bcrypt.hash(password, 10);
+
+    const user = {
+      username,
+      email,
+      passwordHash,
+      bio: "",
+      avatar: "",
+      status: "",
+      coins: 1000,
+      createdAt: new Date().toISOString()
+    };
+
+    await saveUser(user);
 
     res.json({
       success: true,
-      message: "Account uumameera."
+      message: "Account uumameera.",
+      user: {
+        username: user.username,
+        email: user.email,
+        coins: user.coins
+      }
     });
 
   } catch (error) {
-    if (error.code === "23505") {
-      return res.json({
-        success: false,
-        message: "Email kun duraan account qaba."
-      });
-    }
-
-    console.error(error);
+    console.error("Signup error:", error);
 
     res.status(500).json({
       success: false,
-      message: "Account uumuu irratti rakkoon uumame."
+      message: "Signup irratti rakkoon uumame."
     });
   }
 });
@@ -133,37 +211,41 @@ app.post("/api/signup", async (req, res) => {
 
 app.post("/api/login", async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const {
+      email,
+      password
+    } = req.body;
 
-    const emailKey = String(email || "")
-      .toLowerCase()
-      .trim();
+    if (!email || !password) {
+      return res.status(400).json({
+        success: false,
+        message: "Email fi password guuti."
+      });
+    }
 
-    const result = await pool.query(
-      `
-      SELECT *
-      FROM users
-      WHERE email = $1
-      `,
-      [emailKey]
-    );
+    if (!redis) {
+      return res.status(500).json({
+        success: false,
+        message: "Database connection hin jiru."
+      });
+    }
 
-    if (result.rows.length === 0) {
-      return res.json({
+    const user = await getUser(email);
+
+    if (!user) {
+      return res.status(401).json({
         success: false,
         message: "Email ykn password sirrii miti."
       });
     }
 
-    const user = result.rows[0];
-
-    const passwordOK = await bcrypt.compare(
+    const passwordCorrect = await bcrypt.compare(
       password,
-      user.password_hash
+      user.passwordHash
     );
 
-    if (!passwordOK) {
-      return res.json({
+    if (!passwordCorrect) {
+      return res.status(401).json({
         success: false,
         message: "Email ykn password sirrii miti."
       });
@@ -171,8 +253,8 @@ app.post("/api/login", async (req, res) => {
 
     res.json({
       success: true,
+      message: "Login milkaa'eera.",
       user: {
-        id: user.id,
         username: user.username,
         email: user.email,
         bio: user.bio,
@@ -183,7 +265,7 @@ app.post("/api/login", async (req, res) => {
     });
 
   } catch (error) {
-    console.error(error);
+    console.error("Login error:", error);
 
     res.status(500).json({
       success: false,
@@ -193,33 +275,14 @@ app.post("/api/login", async (req, res) => {
 });
 
 /* =========================
-   USER PROFILE
+   PROFILE
 ========================= */
 
 app.get("/api/user/:email", async (req, res) => {
   try {
-    const email = String(req.params.email)
-      .toLowerCase()
-      .trim();
+    const user = await getUser(req.params.email);
 
-    const result = await pool.query(
-      `
-      SELECT
-        id,
-        username,
-        email,
-        bio,
-        avatar,
-        status,
-        coins,
-        created_at
-      FROM users
-      WHERE email = $1
-      `,
-      [email]
-    );
-
-    if (result.rows.length === 0) {
+    if (!user) {
       return res.status(404).json({
         success: false,
         message: "User hin argamne."
@@ -228,35 +291,22 @@ app.get("/api/user/:email", async (req, res) => {
 
     res.json({
       success: true,
-      user: result.rows[0]
+      user: {
+        username: user.username,
+        email: user.email,
+        bio: user.bio,
+        avatar: user.avatar,
+        status: user.status,
+        coins: user.coins
+      }
     });
 
   } catch (error) {
-    console.error(error);
-
     res.status(500).json({
       success: false,
-      message: "Server error."
+      message: "Profile irratti rakkoon uumame."
     });
   }
-});
-
-/* =========================
-   STATUS
-========================= */
-
-app.get("/api/status", (req, res) => {
-  res.json({
-    app: "Waliin-JM",
-    status: "online",
-    rooms: rooms.size,
-    unlimitedAudience: true,
-    classroom: true,
-    seats: [10, 15],
-    giftSystem: true,
-    voiceClub: true,
-    database: Boolean(process.env.DATABASE_URL)
-  });
 });
 
 /* =========================
@@ -271,1387 +321,856 @@ function generateRoomId() {
 }
 
 /* =========================
-   CREATE CLASSROOM
-========================= */
-
-function createSeats(count) {
-  return Array.from({ length: count }, (_, i) => ({
-    number: i + 1,
-    locked: false,
-    userId: null,
-    username: null,
-    role: null,
-    mic: false,
-    muted: false
-  }));
-}
-
-/* =========================
-   PARTICIPANTS
-========================= */
-
-function getParticipants(room) {
-  return [...room.users.entries()].map(
-    ([socketId, user]) => ({
-      socketId,
-      username: user.username,
-      role: user.role,
-      seat: user.seat,
-      mic: user.mic,
-      muted: user.muted,
-      handRaised: user.handRaised
-    })
-  );
-}
-
-/* =========================
-   CLASSROOM STATE
-========================= */
-
-function getClassroomState(room) {
-  return {
-    roomId: room.id,
-    type: room.type,
-    seatCount: room.seatCount,
-
-    hostId: room.hostId,
-    teacherId: room.teacherId,
-
-    seats: room.seats,
-
-    users: getParticipants(room),
-
-    raisedHands: room.raisedHands,
-
-    messages: room.messages.slice(-100),
-
-    gifts: room.gifts.slice(-50)
-  };
-}
-
-/* =========================
-   BROADCAST CLASSROOM
-========================= */
-
-function broadcastClassroom(room) {
-  io.to(room.id).emit(
-    "classroom-state",
-    getClassroomState(room)
-  );
-
-  io.to(room.id).emit(
-    "participants",
-    getParticipants(room)
-  );
-}
-
-/* =========================
    SOCKET.IO
 ========================= */
 
-io.on("connection", socket => {
+io.on("connection", (socket) => {
 
-  console.log(
-    "User connected:",
-    socket.id
-  );
+  console.log("User connected:", socket.id);
 
-  /* =========================
+  /* =====================
      CREATE ROOM
-  ========================= */
+  ===================== */
 
-  socket.on(
-    "create-room",
-    ({
-      username,
-      password = "",
-      type = "video",
-      seatCount = 10
-    }) => {
+  socket.on("create-room", (data, callback) => {
 
-      seatCount = Number(seatCount);
+    try {
+      const username = data.username || "Guest";
 
-      if (![10, 15].includes(seatCount)) {
-        seatCount = 10;
+      const requestedSeats =
+        Number(data.seatCount) === 15 ? 15 : 10;
+
+      let roomId = generateRoomId();
+
+      while (rooms.has(roomId)) {
+        roomId = generateRoomId();
       }
-
-      const roomId = generateRoomId();
 
       const room = {
         id: roomId,
-        password,
-        type,
-        seatCount,
-
-        users: new Map(),
-
-        seats: createSeats(seatCount),
-
+        type: data.type || "classroom",
+        password: data.password || "",
+        seatCount: requestedSeats,
+        seats: createSeats(requestedSeats),
         hostId: socket.id,
-
         teacherId: null,
-
+        users: new Map(),
         raisedHands: [],
-
         messages: [],
-
         gifts: []
       };
 
-      room.users.set(
-        socket.id,
-        {
-          username: username || "Host",
-          role: "host",
-          seat: null,
-          mic: false,
-          muted: false,
-          handRaised: false
-        }
-      );
+      const user = {
+        socketId: socket.id,
+        username,
+        role: "host",
+        seat: null,
+        micOn: false,
+        muted: false,
+        handRaised: false
+      };
 
+      room.users.set(socket.id, user);
       rooms.set(roomId, room);
 
       socket.join(roomId);
 
-      socket.roomId = roomId;
-      socket.username = username || "Host";
-      socket.isAdmin = true;
-      socket.roomType = type;
-
-      socket.emit(
-        "room-created",
-        {
-          roomId,
-          username: socket.username,
-          type,
-          seatCount
-        }
-      );
-
-      broadcastClassroom(room);
-    }
-  );
-
-  /* =========================
-     JOIN ROOM
-  ========================= */
-
-  socket.on(
-    "join-room",
-    ({
-      roomId,
-      username,
-      password = ""
-    }) => {
-
-      const id = String(roomId || "")
-        .toUpperCase();
-
-      const room = rooms.get(id);
-
-      if (!room) {
-        socket.emit(
-          "room-error",
-          "Club kun hin jiru."
-        );
-        return;
-      }
-
-      if (
-        room.password &&
-        room.password !== password
-      ) {
-        socket.emit(
-          "room-error",
-          "Password roomii sirrii miti."
-        );
-        return;
-      }
-
-      room.users.set(
-        socket.id,
-        {
-          username: username || "User",
-          role: "audience",
-          seat: null,
-          mic: false,
-          muted: false,
-          handRaised: false
-        }
-      );
-
-      socket.join(id);
-
-      socket.roomId = id;
-      socket.username = username || "User";
-      socket.isAdmin = false;
-      socket.roomType = room.type;
-
-      socket.emit(
-        "room-joined",
-        {
-          roomId: id,
-          username: socket.username,
-          type: room.type,
-          seatCount: room.seatCount,
-          state: getClassroomState(room)
-        }
-      );
-
-      socket.to(id).emit(
-        "user-joined",
-        {
-          socketId: socket.id,
-          username: socket.username
-        }
-      );
-
-      broadcastClassroom(room);
-    }
-  );
-
-  /* =========================
-     VOICE CLUB JOIN
-  ========================= */
-
-  socket.on(
-    "voice-club-join",
-    ({
-      roomId,
-      username
-    }) => {
-
-      const id = String(roomId || "")
-        .toUpperCase();
-
-      const room = rooms.get(id);
-
-      if (!room) {
-        socket.emit(
-          "room-error",
-          "Voice Club hin jiru."
-        );
-        return;
-      }
-
-      room.users.set(
-        socket.id,
-        {
-          username: username || "User",
-          role: "audience",
-          seat: null,
-          mic: false,
-          muted: false,
-          handRaised: false
-        }
-      );
-
-      socket.join(id);
-
-      socket.roomId = id;
-      socket.username = username || "User";
-      socket.roomType = "voice-classroom";
-
-      socket.to(id).emit(
-        "voice-club-user-joined",
-        {
-          socketId: socket.id,
-          username: socket.username
-        }
-      );
-
-      broadcastClassroom(room);
-    }
-  );
-
-  /* =========================
-     PROMOTE AUDIENCE → SEAT
-  ========================= */
-
-  socket.on(
-    "promote-to-seat",
-    ({
-      userId,
-      seatNumber
-    },
-    callback) => {
-
-      const room = rooms.get(
-        socket.roomId
-      );
-
-      if (!room) return;
-
-      const actor =
-        room.users.get(socket.id);
-
-      if (
-        !actor ||
-        !["host", "teacher"].includes(actor.role)
-      ) {
-        return callback?.({
-          success: false,
-          message: "Aangoo hin qabdu."
-        });
-      }
-
-      const target =
-        room.users.get(userId);
-
-      const seat =
-        room.seats.find(
-          s =>
-            s.number === Number(seatNumber)
-        );
-
-      if (!target || !seat) {
-        return callback?.({
-          success: false,
-          message: "User ykn seat hin argamne."
-        });
-      }
-
-      if (seat.locked) {
-        return callback?.({
-          success: false,
-          message: "Seat kun LOCKED dha."
-        });
-      }
-
-      if (seat.userId) {
-        return callback?.({
-          success: false,
-          message: "Seat kun nama qaba."
-        });
-      }
-
-      if (target.seat) {
-        return callback?.({
-          success: false,
-          message: "User kun seat irra jira."
-        });
-      }
-
-      target.seat = seat.number;
-      target.role = "student";
-      target.mic = false;
-      target.muted = false;
-      target.handRaised = false;
-
-      seat.userId = target.id;
-      seat.username = target.username;
-      seat.role = "student";
-      seat.mic = false;
-      seat.muted = false;
-
-      room.raisedHands =
-        room.raisedHands.filter(
-          id => id !== target.id
-        );
-
-      io.to(target.id).emit(
-        "seat-promoted",
-        {
-          seatNumber: seat.number
-        }
-      );
+      socket.data.roomId = roomId;
+      socket.data.username = username;
 
       callback?.({
-        success: true
+        success: true,
+        roomId
       });
 
       broadcastClassroom(room);
+
+    } catch (error) {
+      console.error("Create room error:", error);
+
+      callback?.({
+        success: false,
+        message: "Room uumuu hin dandeenye."
+      });
     }
-  );
+  });
 
-  /* =========================
-     SEAT → AUDIENCE
-  ========================= */
+  /* =====================
+     JOIN ROOM
+  ===================== */
 
-  socket.on(
-    "seat-to-audience",
-    ({
-      userId
-    },
-    callback) => {
+  socket.on("join-room", (data, callback) => {
 
-      const room =
-        rooms.get(socket.roomId);
+    const roomId = data.roomId;
 
-      if (!room) return;
+    const room = rooms.get(roomId);
 
-      const actor =
-        room.users.get(socket.id);
+    if (!room) {
+      return callback?.({
+        success: false,
+        message: "Room hin argamne."
+      });
+    }
 
-      if (
-        !actor ||
-        !["host", "teacher"].includes(actor.role)
-      ) {
-        return callback?.({
-          success: false,
-          message: "Aangoo hin qabdu."
-        });
-      }
+    if (
+      room.password &&
+      room.password !== (data.password || "")
+    ) {
+      return callback?.({
+        success: false,
+        message: "Password room sirrii miti."
+      });
+    }
 
-      const target =
-        room.users.get(userId);
+    const username = data.username || "Guest";
 
-      if (!target || !target.seat) {
-        return callback?.({
-          success: false,
-          message: "Student seat irra hin jiru."
-        });
-      }
+    const user = {
+      socketId: socket.id,
+      username,
+      role: "audience",
+      seat: null,
+      micOn: false,
+      muted: false,
+      handRaised: false
+    };
 
-      const seat =
-        room.seats.find(
-          s =>
-            s.number === target.seat
-        );
+    room.users.set(socket.id, user);
+
+    socket.join(roomId);
+
+    socket.data.roomId = roomId;
+    socket.data.username = username;
+
+    callback?.({
+      success: true,
+      roomId,
+      role: user.role
+    });
+
+    broadcastClassroom(room);
+
+    io.to(roomId).emit("user-joined", {
+      socketId: socket.id,
+      username
+    });
+  });
+
+  /* =====================
+     VOICE CLUB JOIN
+  ===================== */
+
+  socket.on("voice-club-join", (data, callback) => {
+
+    const room = rooms.get(data.roomId);
+
+    if (!room) {
+      return callback?.({
+        success: false,
+        message: "Club hin argamne."
+      });
+    }
+
+    const username = data.username || "Guest";
+
+    const user = {
+      socketId: socket.id,
+      username,
+      role: "audience",
+      seat: null,
+      micOn: false,
+      muted: false,
+      handRaised: false
+    };
+
+    room.users.set(socket.id, user);
+
+    socket.join(room.id);
+
+    socket.data.roomId = room.id;
+    socket.data.username = username;
+
+    callback?.({
+      success: true,
+      roomId: room.id
+    });
+
+    broadcastClassroom(room);
+  });
+
+  /* =====================
+     PROMOTE TO SEAT
+  ===================== */
+
+  socket.on("promote-to-seat", (data, callback) => {
+
+    const room = rooms.get(socket.data.roomId);
+
+    if (!room) return;
+
+    const requester = room.users.get(socket.id);
+
+    if (
+      requester.role !== "host" &&
+      requester.role !== "teacher"
+    ) {
+      return callback?.({
+        success: false,
+        message: "Host ykn Teacher qofa."
+      });
+    }
+
+    const target = room.users.get(data.userId);
+
+    if (!target) {
+      return callback?.({
+        success: false,
+        message: "User hin argamne."
+      });
+    }
+
+    const seatNumber = Number(data.seatNumber);
+
+    const seat = room.seats.find(
+      (s) => s.number === seatNumber
+    );
+
+    if (!seat) {
+      return callback?.({
+        success: false,
+        message: "Seat hin argamne."
+      });
+    }
+
+    if (seat.locked) {
+      return callback?.({
+        success: false,
+        message: "Seat locked dha."
+      });
+    }
+
+    if (seat.socketId) {
+      return callback?.({
+        success: false,
+        message: "Seat kun qabameera."
+      });
+    }
+
+    if (target.seat) {
+      return callback?.({
+        success: false,
+        message: "User kun seat qaba."
+      });
+    }
+
+    seat.socketId = target.socketId;
+    seat.username = target.username;
+    seat.micOn = false;
+
+    target.seat = seatNumber;
+    target.role = "student";
+
+    callback?.({
+      success: true
+    });
+
+    broadcastClassroom(room);
+  });
+
+  /* =====================
+     SEAT TO AUDIENCE
+  ===================== */
+
+  socket.on("seat-to-audience", (data, callback) => {
+
+    const room = rooms.get(socket.data.roomId);
+
+    if (!room) return;
+
+    const requester = room.users.get(socket.id);
+
+    if (
+      requester.role !== "host" &&
+      requester.role !== "teacher"
+    ) {
+      return callback?.({
+        success: false,
+        message: "Permission hin qabdu."
+      });
+    }
+
+    const target = room.users.get(data.userId);
+
+    if (!target) return;
+
+    if (target.seat) {
+
+      const seat = room.seats.find(
+        (s) => s.number === target.seat
+      );
 
       if (seat) {
-        seat.userId = null;
+        seat.socketId = null;
         seat.username = null;
-        seat.role = null;
-        seat.mic = false;
-        seat.muted = false;
+        seat.micOn = false;
       }
 
       target.seat = null;
       target.role = "audience";
-      target.mic = false;
-
-      callback?.({
-        success: true
-      });
-
-      io.to(target.id).emit(
-        "moved-to-audience"
-      );
-
-      broadcastClassroom(room);
+      target.micOn = false;
     }
-  );
 
-  /* =========================
+    callback?.({
+      success: true
+    });
+
+    broadcastClassroom(room);
+  });
+
+  /* =====================
      LOCK / UNLOCK SEAT
-  ========================= */
+  ===================== */
 
-  socket.on(
-    "toggle-seat-lock",
-    ({
-      seatNumber
-    },
-    callback) => {
+  socket.on("toggle-seat-lock", (data, callback) => {
 
-      const room =
-        rooms.get(socket.roomId);
+    const room = rooms.get(socket.data.roomId);
 
-      if (!room) return;
+    if (!room) return;
 
-      const actor =
-        room.users.get(socket.id);
+    const requester = room.users.get(socket.id);
 
-      if (!actor || actor.role !== "host") {
-        return callback?.({
-          success: false,
-          message: "Host qofa."
-        });
-      }
-
-      const seat =
-        room.seats.find(
-          s =>
-            s.number === Number(seatNumber)
-        );
-
-      if (!seat) {
-        return callback?.({
-          success: false,
-          message: "Seat hin argamne."
-        });
-      }
-
-      seat.locked = !seat.locked;
-
-      callback?.({
-        success: true,
-        locked: seat.locked
+    if (requester.role !== "host") {
+      return callback?.({
+        success: false,
+        message: "Host qofa."
       });
-
-      broadcastClassroom(room);
     }
-  );
 
-  /* =========================
-     MIC
-  ========================= */
+    const seat = room.seats.find(
+      (s) => s.number === Number(data.seatNumber)
+    );
 
-  socket.on(
-    "toggle-mic",
-    ({
-      enabled
-    },
-    callback) => {
+    if (!seat) return;
 
-      const room =
-        rooms.get(socket.roomId);
+    seat.locked = !seat.locked;
 
-      if (!room) return;
+    callback?.({
+      success: true,
+      locked: seat.locked
+    });
 
-      const user =
-        room.users.get(socket.id);
+    broadcastClassroom(room);
+  });
 
-      if (!user) return;
+  /* =====================
+     TOGGLE MIC
+  ===================== */
 
-      if (
-        user.role === "audience" &&
-        !user.seat
-      ) {
-        return callback?.({
-          success: false,
-          message:
-            "Audience seat irratti ol ba'uu qaba."
-        });
-      }
+  socket.on("toggle-mic", (callback) => {
 
-      if (
-        user.muted &&
-        enabled
-      ) {
-        return callback?.({
-          success: false,
-          message: "Mic kee mute dha."
-        });
-      }
+    const room = rooms.get(socket.data.roomId);
 
-      user.mic = Boolean(enabled);
+    if (!room) return;
 
-      if (user.seat) {
-        const seat =
-          room.seats.find(
-            s =>
-              s.number === user.seat
-          );
+    const user = room.users.get(socket.id);
 
-        if (seat) {
-          seat.mic = user.mic;
-        }
-      }
+    if (!user) return;
 
-      callback?.({
-        success: true,
-        mic: user.mic
+    if (
+      !user.seat &&
+      user.role !== "host" &&
+      user.role !== "teacher"
+    ) {
+      return callback?.({
+        success: false,
+        message: "Audience seat malee mic banachuu hin danda'u."
       });
-
-      broadcastClassroom(room);
     }
-  );
 
-  /* =========================
+    if (user.muted) {
+      return callback?.({
+        success: false,
+        message: "Mic kee hostiin mute godhameera."
+      });
+    }
+
+    user.micOn = !user.micOn;
+
+    if (user.seat) {
+
+      const seat = room.seats.find(
+        (s) => s.number === user.seat
+      );
+
+      if (seat) {
+        seat.micOn = user.micOn;
+      }
+    }
+
+    socket.emit("mic-changed", {
+      micOn: user.micOn
+    });
+
+    broadcastClassroom(room);
+
+    callback?.({
+      success: true,
+      micOn: user.micOn
+    });
+  });
+
+  /* =====================
      MUTE USER
-  ========================= */
+  ===================== */
 
-  socket.on(
-    "mute-user",
-    (
-      targetId,
-      callback
-    ) => {
+  socket.on("mute-user", (data, callback) => {
 
-      const room =
-        rooms.get(socket.roomId);
+    const room = rooms.get(socket.data.roomId);
 
-      if (!room) return;
+    if (!room) return;
 
-      const actor =
-        room.users.get(socket.id);
+    const requester = room.users.get(socket.id);
 
-      if (!actor || actor.role !== "host") {
-        return callback?.({
-          success: false,
-          message: "Host qofa mute godha."
-        });
-      }
+    if (requester.role !== "host") {
+      return callback?.({
+        success: false,
+        message: "Host qofa mute gochuu danda'a."
+      });
+    }
 
-      const target =
-        room.users.get(targetId);
+    const target = room.users.get(data.userId);
 
-      if (!target) {
-        return callback?.({
-          success: false,
-          message: "User hin argamne."
-        });
-      }
+    if (!target) return;
 
-      target.muted = true;
-      target.mic = false;
+    target.muted = true;
+    target.micOn = false;
 
-      if (target.seat) {
-        const seat =
-          room.seats.find(
-            s =>
-              s.number === target.seat
-          );
+    if (target.seat) {
 
-        if (seat) {
-          seat.mic = false;
-          seat.muted = true;
-        }
-      }
-
-      io.to(targetId).emit(
-        "force-mute"
+      const seat = room.seats.find(
+        (s) => s.number === target.seat
       );
 
-      callback?.({
-        success: true
-      });
-
-      broadcastClassroom(room);
+      if (seat) {
+        seat.micOn = false;
+      }
     }
-  );
 
-  /* =========================
+    io.to(target.socketId).emit("force-mute");
+
+    broadcastClassroom(room);
+
+    callback?.({
+      success: true
+    });
+  });
+
+  /* =====================
      UNMUTE USER
-  ========================= */
+  ===================== */
 
-  socket.on(
-    "unmute-user",
-    (
-      targetId,
-      callback
-    ) => {
+  socket.on("unmute-user", (data, callback) => {
 
-      const room =
-        rooms.get(socket.roomId);
+    const room = rooms.get(socket.data.roomId);
 
-      if (!room) return;
+    if (!room) return;
 
-      const actor =
-        room.users.get(socket.id);
+    const requester = room.users.get(socket.id);
 
-      if (!actor || actor.role !== "host") {
-        return callback?.({
-          success: false,
-          message: "Host qofa."
-        });
-      }
-
-      const target =
-        room.users.get(targetId);
-
-      if (!target) return;
-
-      target.muted = false;
-
-      if (target.seat) {
-        const seat =
-          room.seats.find(
-            s =>
-              s.number === target.seat
-          );
-
-        if (seat) {
-          seat.muted = false;
-        }
-      }
-
-      io.to(targetId).emit(
-        "unmuted-by-host"
-      );
-
-      callback?.({
-        success: true
+    if (requester.role !== "host") {
+      return callback?.({
+        success: false,
+        message: "Host qofa."
       });
-
-      broadcastClassroom(room);
     }
-  );
 
-  /* =========================
+    const target = room.users.get(data.userId);
+
+    if (!target) return;
+
+    target.muted = false;
+
+    io.to(target.socketId).emit("unmuted-by-host");
+
+    broadcastClassroom(room);
+
+    callback?.({
+      success: true
+    });
+  });
+
+  /* =====================
      MAKE TEACHER
-  ========================= */
+  ===================== */
 
-  socket.on(
-    "make-teacher",
-    (
-      { userId },
-      callback
-    ) => {
+  socket.on("make-teacher", (data, callback) => {
 
-      const room =
-        rooms.get(socket.roomId);
+    const room = rooms.get(socket.data.roomId);
 
-      if (!room) return;
+    if (!room) return;
 
-      const actor =
-        room.users.get(socket.id);
+    const requester = room.users.get(socket.id);
 
-      if (!actor || actor.role !== "host") {
-        return callback?.({
-          success: false,
-          message: "Host qofa."
-        });
-      }
-
-      const target =
-        room.users.get(userId);
-
-      if (!target) return;
-
-      target.role = "teacher";
-
-      room.teacherId =
-        target.id;
-
-      io.to(target.id).emit(
-        "became-teacher"
-      );
-
-      callback?.({
-        success: true
+    if (requester.role !== "host") {
+      return callback?.({
+        success: false,
+        message: "Host qofa."
       });
-
-      broadcastClassroom(room);
     }
-  );
 
-  /* =========================
-     REMOVE USER
-  ========================= */
+    const target = room.users.get(data.userId);
 
-  socket.on(
-    "remove-user",
-    (
-      targetId,
-      callback
-    ) => {
+    if (!target) return;
 
-      const room =
-        rooms.get(socket.roomId);
+    if (room.teacherId) {
 
-      if (!room) return;
+      const oldTeacher =
+        room.users.get(room.teacherId);
 
-      const actor =
-        room.users.get(socket.id);
-
-      if (!actor || actor.role !== "host") {
-        return callback?.({
-          success: false,
-          message: "Host qofa."
-        });
+      if (oldTeacher) {
+        oldTeacher.role =
+          oldTeacher.seat ? "student" : "audience";
       }
-
-      const target =
-        room.users.get(targetId);
-
-      if (!target) return;
-
-      if (target.seat) {
-        const seat =
-          room.seats.find(
-            s =>
-              s.number === target.seat
-          );
-
-        if (seat) {
-          seat.userId = null;
-          seat.username = null;
-          seat.role = null;
-          seat.mic = false;
-          seat.muted = false;
-        }
-      }
-
-      room.users.delete(targetId);
-
-      room.raisedHands =
-        room.raisedHands.filter(
-          id => id !== targetId
-        );
-
-      const targetSocket =
-        io.sockets.sockets.get(
-          targetId
-        );
-
-      if (targetSocket) {
-        targetSocket.emit(
-          "removed-from-room"
-        );
-
-        targetSocket.leave(
-          room.id
-        );
-
-        targetSocket.roomId = null;
-      }
-
-      callback?.({
-        success: true
-      });
-
-      broadcastClassroom(room);
     }
-  );
 
-  /* =========================
+    room.teacherId = target.socketId;
+    target.role = "teacher";
+
+    callback?.({
+      success: true
+    });
+
+    broadcastClassroom(room);
+  });
+
+  /* =====================
      RAISE HAND
-  ========================= */
+  ===================== */
 
-  socket.on(
-    "raise-hand",
-    () => {
+  socket.on("raise-hand", (callback) => {
 
-      const room =
-        rooms.get(socket.roomId);
+    const room = rooms.get(socket.data.roomId);
 
-      if (!room) return;
+    if (!room) return;
 
-      const user =
-        room.users.get(socket.id);
+    const user = room.users.get(socket.id);
 
-      if (!user) return;
+    if (!user) return;
 
-      user.handRaised =
-        !user.handRaised;
+    user.handRaised = !user.handRaised;
 
-      if (user.handRaised) {
+    if (user.handRaised) {
 
-        if (
-          !room.raisedHands.includes(
-            socket.id
-          )
-        ) {
-          room.raisedHands.push(
-            socket.id
-          );
-        }
-
-      } else {
-
-        room.raisedHands =
-          room.raisedHands.filter(
-            id =>
-              id !== socket.id
-          );
+      if (!room.raisedHands.includes(socket.id)) {
+        room.raisedHands.push(socket.id);
       }
-
-      broadcastClassroom(room);
-    }
-  );
-
-  /* =========================
-     LOWER HAND
-  ========================= */
-
-  socket.on(
-    "lower-hand",
-    () => {
-
-      const room =
-        rooms.get(socket.roomId);
-
-      if (!room) return;
-
-      const user =
-        room.users.get(socket.id);
-
-      if (!user) return;
-
-      user.handRaised = false;
-
-      room.raisedHands =
-        room.raisedHands.filter(
-          id =>
-            id !== socket.id
-        );
-
-      broadcastClassroom(room);
-    }
-  );
-
-  /* =========================
-     CHAT
-  ========================= */
-
-  socket.on(
-    "chat-message",
-    data => {
-
-      const room =
-        rooms.get(socket.roomId);
-
-      if (!room) return;
-
-      const message =
-        String(
-          data?.message || ""
-        ).trim();
-
-      if (!message) return;
-
-      const chat = {
-        id: Date.now().toString(),
-        username:
-          socket.username,
-        message,
-        time:
-          new Date().toISOString()
-      };
-
-      room.messages.push(chat);
-
-      if (room.messages.length > 200) {
-        room.messages.shift();
-      }
-
-      io.to(room.id).emit(
-        "chat-message",
-        chat
-      );
-    }
-  );
-
-  /* =========================
-     TYPING
-  ========================= */
-
-  socket.on(
-    "typing",
-    () => {
-
-      if (!socket.roomId) return;
-
-      socket.to(
-        socket.roomId
-      ).emit(
-        "typing",
-        {
-          username:
-            socket.username
-        }
-      );
-    }
-  );
-
-  /* =========================
-     WEBRTC OFFER
-  ========================= */
-
-  socket.on(
-    "offer",
-    data => {
-
-      if (!data?.target) return;
-
-      io.to(
-        data.target
-      ).emit(
-        "offer",
-        {
-          sender:
-            socket.id,
-          offer:
-            data.offer
-        }
-      );
-    }
-  );
-
-  /* =========================
-     WEBRTC ANSWER
-  ========================= */
-
-  socket.on(
-    "answer",
-    data => {
-
-      if (!data?.target) return;
-
-      io.to(
-        data.target
-      ).emit(
-        "answer",
-        {
-          sender:
-            socket.id,
-          answer:
-            data.answer
-        }
-      );
-    }
-  );
-
-  /* =========================
-     ICE CANDIDATE
-  ========================= */
-
-  socket.on(
-    "ice-candidate",
-    data => {
-
-      if (!data?.target) return;
-
-      io.to(
-        data.target
-      ).emit(
-        "ice-candidate",
-        {
-          sender:
-            socket.id,
-          candidate:
-            data.candidate
-        }
-      );
-    }
-  );
-
-  /* =========================
-     SCREEN SHARE
-  ========================= */
-
-  socket.on(
-    "screen-share",
-    data => {
-
-      if (!socket.roomId) return;
-
-      socket.to(
-        socket.roomId
-      ).emit(
-        "screen-share",
-        {
-          socketId:
-            socket.id,
-          active:
-            Boolean(data?.active)
-        }
-      );
-    }
-  );
-
-  /* =========================
-     GIFTS
-  ========================= */
-
-  socket.on(
-    "sendGift",
-    data => {
-
-      if (!socket.roomId) return;
-
-      const gifts = {
-        heart: {
-          emoji: "❤️",
-          coins: 10
-        },
-
-        flower: {
-          emoji: "🌹",
-          coins: 20
-        },
-
-        star: {
-          emoji: "⭐",
-          coins: 50
-        },
-
-        crown: {
-          emoji: "👑",
-          coins: 100
-        },
-
-        diamond: {
-          emoji: "💎",
-          coins: 500
-        }
-      };
-
-      const selected =
-        gifts[data?.gift] ||
-        gifts.heart;
-
-      const giftData = {
-        sender:
-          socket.username,
-
-        gift:
-          data?.gift ||
-          "heart",
-
-        emoji:
-          selected.emoji,
-
-        coins:
-          selected.coins,
-
-        room:
-          socket.roomId,
-
-        time:
-          new Date().toISOString()
-      };
-
-      const room =
-        rooms.get(
-          socket.roomId
-        );
-
-      if (room) {
-        room.gifts.push(
-          giftData
-        );
-
-        if (room.gifts.length > 100) {
-          room.gifts.shift();
-        }
-      }
-
-      io.to(
-        socket.roomId
-      ).emit(
-        "giftReceived",
-        giftData
-      );
-    }
-  );
-
-  /* =========================
-     CALL START
-  ========================= */
-
-  socket.on(
-    "call-start",
-    ({
-      targetId,
-      callType
-    }) => {
-
-      if (!targetId) return;
-
-      io.to(
-        targetId
-      ).emit(
-        "incoming-call",
-        {
-          callerId:
-            socket.id,
-
-          caller:
-            socket.username,
-
-          callType:
-            callType || "video"
-        }
-      );
-    }
-  );
-
-  /* =========================
-     CALL END
-  ========================= */
-
-  socket.on(
-    "call-end",
-    ({
-      targetId
-    }) => {
-
-      if (!targetId) return;
-
-      io.to(
-        targetId
-      ).emit(
-        "call-ended",
-        {
-          callerId:
-            socket.id
-        }
-      );
-    }
-  );
-
-  /* =========================
-     LEAVE ROOM
-  ========================= */
-
-  socket.on(
-    "leave-room",
-    () => {
-
-      removeSocketFromRoom(
-        socket
-      );
-    }
-  );
-
-  /* =========================
-     DISCONNECT
-  ========================= */
-
-  socket.on(
-    "disconnect",
-    () => {
-
-      console.log(
-        "User disconnected:",
-        socket.id
-      );
-
-      removeSocketFromRoom(
-        socket
-      );
-    }
-  );
-});
-
-/* =========================
-   REMOVE SOCKET FROM ROOM
-========================= */
-
-function removeSocketFromRoom(socket) {
-
-  const roomId =
-    socket.roomId;
-
-  if (!roomId) return;
-
-  const room =
-    rooms.get(roomId);
-
-  if (!room) return;
-
-  const user =
-    room.users.get(
-      socket.id
-    );
-
-  if (!user) return;
-
-  /* RELEASE SEAT */
-
-  if (user.seat) {
-
-    const seat =
-      room.seats.find(
-        s =>
-          s.number === user.seat
-      );
-
-    if (seat) {
-
-      seat.userId = null;
-      seat.username = null;
-      seat.role = null;
-      seat.mic = false;
-      seat.muted = false;
-    }
-  }
-
-  /* REMOVE HAND */
-
-  room.raisedHands =
-    room.raisedHands.filter(
-      id =>
-        id !== socket.id
-    );
-
-  /* REMOVE USER */
-
-  room.users.delete(
-    socket.id
-  );
-
-  socket.to(
-    roomId
-  ).emit(
-    "user-left",
-    socket.id
-  );
-
-  /*
-    HOST LEAVES:
-    Transfer host to another user.
-  */
-
-  if (
-    room.hostId === socket.id
-  ) {
-
-    const next =
-      Array.from(
-        room.users.entries()
-      )[0];
-
-    if (next) {
-
-      const [
-        nextId,
-        nextUser
-      ] = next;
-
-      nextUser.role =
-        "host";
-
-      room.hostId =
-        nextId;
-
-      io.to(nextId).emit(
-        "became-host"
-      );
 
     } else {
 
-      rooms.delete(
-        roomId
+      room.raisedHands =
+        room.raisedHands.filter(
+          (id) => id !== socket.id
+        );
+    }
+
+    broadcastClassroom(room);
+
+    callback?.({
+      success: true,
+      handRaised: user.handRaised
+    });
+  });
+
+  /* =====================
+     CHAT
+  ===================== */
+
+  socket.on("chat-message", (data) => {
+
+    const room = rooms.get(socket.data.roomId);
+
+    if (!room) return;
+
+    const user = room.users.get(socket.id);
+
+    if (!user) return;
+
+    const message = {
+      id: Date.now(),
+      socketId: socket.id,
+      username: user.username,
+      message: String(data.message || "").substring(0, 1000),
+      time: new Date().toISOString()
+    };
+
+    room.messages.push(message);
+
+    if (room.messages.length > 100) {
+      room.messages.shift();
+    }
+
+    io.to(room.id).emit(
+      "chat-message",
+      message
+    );
+  });
+
+  /* =====================
+     TYPING
+  ===================== */
+
+  socket.on("typing", (data) => {
+
+    const room = rooms.get(socket.data.roomId);
+
+    if (!room) return;
+
+    socket.to(room.id).emit("typing", {
+      username: data.username || "User"
+    });
+  });
+
+  /* =====================
+     WEBRTC OFFER
+  ===================== */
+
+  socket.on("offer", (data) => {
+
+    if (!data.target) return;
+
+    io.to(data.target).emit("offer", {
+      offer: data.offer,
+      sender: socket.id
+    });
+  });
+
+  /* =====================
+     WEBRTC ANSWER
+  ===================== */
+
+  socket.on("answer", (data) => {
+
+    if (!data.target) return;
+
+    io.to(data.target).emit("answer", {
+      answer: data.answer,
+      sender: socket.id
+    });
+  });
+
+  /* =====================
+     ICE
+  ===================== */
+
+  socket.on("ice-candidate", (data) => {
+
+    if (!data.target) return;
+
+    io.to(data.target).emit(
+      "ice-candidate",
+      {
+        candidate: data.candidate,
+        sender: socket.id
+      }
+    );
+  });
+
+  /* =====================
+     REMOVE USER
+  ===================== */
+
+  socket.on("remove-user", (data, callback) => {
+
+    const room = rooms.get(socket.data.roomId);
+
+    if (!room) return;
+
+    const requester = room.users.get(socket.id);
+
+    if (requester.role !== "host") {
+      return callback?.({
+        success: false,
+        message: "Host qofa."
+      });
+    }
+
+    const target = room.users.get(data.userId);
+
+    if (!target) return;
+
+    io.to(target.socketId).emit(
+      "removed-from-room"
+    );
+
+    const targetSocket =
+      io.sockets.sockets.get(target.socketId);
+
+    if (targetSocket) {
+      targetSocket.leave(room.id);
+      targetSocket.data.roomId = null;
+    }
+
+    if (target.seat) {
+
+      const seat = room.seats.find(
+        (s) => s.number === target.seat
       );
 
-      return;
+      if (seat) {
+        seat.socketId = null;
+        seat.username = null;
+        seat.micOn = false;
+      }
     }
-  }
 
-  broadcastClassroom(room);
-}
+    room.users.delete(target.socketId);
 
-/* =========================
-   FRONTEND
-========================= */
+    room.raisedHands =
+      room.raisedHands.filter(
+        (id) => id !== target.socketId
+      );
 
-app.get(
-  "*",
-  (req, res) => {
+    broadcastClassroom(room);
 
-    res.sendFile(
-      path.join(
-        __dirname,
-        "public",
-        "index.html"
-      )
+    callback?.({
+      success: true
+    });
+  });
+
+  /* =====================
+     CALL START
+  ===================== */
+
+  socket.on("call-start", (data) => {
+
+    const room = rooms.get(socket.data.roomId);
+
+    if (!room) return;
+
+    socket.to(room.id).emit(
+      "call-started",
+      {
+        caller: socket.id,
+        type: data.type || "video"
+      }
     );
-  }
-);
+  });
+
+  /* =====================
+     CALL END
+  ===================== */
+
+  socket.on("call-end", () => {
+
+    const room = rooms.get(socket.data.roomId);
+
+    if (!room) return;
+
+    socket.to(room.id).emit(
+      "call-ended",
+      {
+        caller: socket.id
+      }
+    );
+  });
+
+  /* =====================
+     DISCONNECT
+  ===================== */
+
+  socket.on("disconnect", () => {
+
+    console.log("User disconnected:", socket.id);
+
+    const roomId = socket.data.roomId;
+
+    if (!roomId) return;
+
+    const room = rooms.get(roomId);
+
+    if (!room) return;
+
+    const user = room.users.get(socket.id);
+
+    if (user) {
+
+      if (user.seat) {
+
+        const seat = room.seats.find(
+          (s) => s.number === user.seat
+        );
+
+        if (seat) {
+          seat.socketId = null;
+          seat.username = null;
+          seat.micOn = false;
+        }
+      }
+
+      room.users.delete(socket.id);
+
+      room.raisedHands =
+        room.raisedHands.filter(
+          (id) => id !== socket.id
+        );
+
+      /* HOST LEAVES */
+
+      if (room.hostId === socket.id) {
+
+        const nextUser =
+          room.users.values().next().value;
+
+        if (nextUser) {
+
+          room.hostId =
+            nextUser.socketId;
+
+          nextUser.role = "host";
+
+          room.teacherId =
+            room.teacherId === socket.id
+              ? null
+              : room.teacherId;
+
+        } else {
+
+          rooms.delete(roomId);
+
+          return;
+        }
+      }
+
+      /* TEACHER LEAVES */
+
+      if (room.teacherId === socket.id) {
+        room.teacherId = null;
+      }
+
+      broadcastClassroom(room);
+
+      io.to(room.id).emit(
+        "user-left",
+        {
+          socketId: socket.id
+        }
+      );
+    }
+  });
+});
 
 /* =========================
-   START
+   START SERVER
 ========================= */
 
 async function startServer() {
 
-  await initDatabase();
+  await connectRedis();
 
-  server.listen(
-    PORT,
-    () => {
-
-      console.log(
-        `Waliin-JM running on port ${PORT}`
-      );
-
-    }
-  );
+  server.listen(PORT, () => {
+    console.log(
+      `WALIIN JM server running on port ${PORT}`
+    );
+  });
 }
 
 startServer();
