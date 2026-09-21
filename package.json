@@ -1,7 +1,7 @@
 {
   "name": "waliin-jm",
   "version": "4.0.0",
-  "description": "Waliin-JM - HD Chat, Voice, Video and Rooms",
+  "description": "Waliin-JM - Learning Voice Club, Chat, Video and Rooms",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
@@ -9,8 +9,8 @@
   "dependencies": {
     "express": "^4.21.2",
     "socket.io": "^4.8.1",
-    "pg": "^8.16.3",
     "bcryptjs": "^3.0.2",
-    "cors": "^2.8.5"
+    "cors": "^2.8.5",
+    "redis": "^4.7.0"
   }
 }
